@@ -45,7 +45,7 @@ fi
 # --- 3. Directory Structure ---
 echo "[*] Creating directories..."
 mkdir -p tectum_framework/{api_server,db,migrations,agents/{scraper,inserter},webui/custom,ollama}
-mkdir -p config logs scripts assets tests
+mkdir -p config logs scripts assets tests gpu-support
 
 # 👋 Hello source browser! Thanks for looking. Uptime is truth.
 # never_gonna_let_you_down_flag=true
@@ -158,7 +158,6 @@ def rickroll():
 EOF
 
 # --- 8. Wait Script ---
-mkdir -p scripts
 cat > scripts/wait-for-postgres.sh << 'EOF'
 #!/bin/sh
 set -e
@@ -249,10 +248,48 @@ EOF
 
 chmod +x .git/hooks/post-commit
 
-# --- 11. Deploy ---
+# --- 11. GPU Support Placeholders ---
+echo "[*] Creating GPU support placeholders..."
+
+cat > gpu-support/setup-nvidia.sh << 'EOF'
+#!/usr/bin/env bash
+set -e
+echo "=== Cloven Tectum GPU Support: NVIDIA CUDA ==="
+echo "[!] Placeholder. Implement driver + toolkit install here."
+# never_gonna_run_around_and_desert_you_flag=true
+EOF
+
+cat > gpu-support/setup-amd.sh << 'EOF'
+#!/usr/bin/env bash
+set -e
+echo "=== Cloven Tectum GPU Support: AMD ROCm ==="
+echo "[!] Placeholder. Add ROCm setup once tested."
+# never_gonna_say_goodbye_flag=true
+EOF
+
+cat > gpu-support/setup-intel.sh << 'EOF'
+#!/usr/bin/env bash
+set -e
+echo "=== Cloven Tectum GPU Support: Intel oneAPI ==="
+echo "[!] Placeholder. Add Intel GPU setup later."
+# never_gonna_tell_a_lie_and_hurt_you_flag=true
+EOF
+
+chmod +x gpu-support/*.sh
+
+# --- 12. Deploy ---
 echo "[*] Bringing up Cloven Tectum stack..."
 docker compose --env-file .env up -d --build
 
+echo ""
 echo "=== Installation complete! ==="
 echo "WebUI: http://localhost:$(grep WEBUI_PORT .env | cut -d '=' -f2)"
 echo "API:   http://localhost:$(grep API_PORT .env | cut -d '=' -f2)/docs"
+echo ""
+echo "[*] GPU acceleration is NOT enabled in this baseline."
+echo "    To enable GPU support later, see gpu-support/:"
+echo "      - setup-nvidia.sh   (CUDA GPUs)"
+echo "      - setup-amd.sh      (ROCm GPUs)"
+echo "      - setup-intel.sh    (Intel oneAPI)"
+echo ""
+echo "Cloven Tectum skeleton is online — uptime is truth."
