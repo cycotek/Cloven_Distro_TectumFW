@@ -15,7 +15,7 @@ This framework applies the same principle: orient AI systems toward **meaningful
 
 ## 👁 The Cloven
 
-When you upload your Cloven image (`assets/cloven_brain.png`), this page will automatically render it as the **symbolic anchor** of the project:  
+ 
 - **Clarity** in chaos  
 - **Stability** in distortion  
 - **Resilience** against systemic noise  
