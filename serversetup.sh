@@ -141,7 +141,8 @@ write_file "tectum_framework/ollama/Dockerfile" "$(cat <<'EOF'
 FROM ollama/ollama:latest
 VOLUME /root/.ollama
 EXPOSE 11434
-CMD ["ollama","serve"]
+# Ollama base image already runs `ollama serve` by default.
+# No CMD override needed here.
 EOF
 )"
 
