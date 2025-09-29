@@ -1,4 +1,4 @@
- 🧠 Cloven_Tectum Framework
+## 🧠 Cloven_Tectum Framework
 
 > *“The tectum in the human brain orients the body and eyes toward relevant stimuli.  
 This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.”*
@@ -125,6 +125,7 @@ WebUI → http://localhost:8080
 
 
 ## 🔮 Roadmap
+
 ✅ Bootstrapper script (serversetup.sh)
 ✅ Basic FastAPI + Ollama + WebUI stack
 ✅ Agents for scraping/inserting
