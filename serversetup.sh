@@ -1,295 +1,126 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-echo "=== Cloven Tectum Framework: Bootstrap Installer ==="
+echo "=== Cloven_Tectum Framework: Full Bootstrap ==="
 
-# --- 0. Self-heal permissions ---
-if [ ! -x "$0" ]; then
-  echo "[*] Fixing execute permissions for $0"
-  chmod +x "$0"
-fi
-
-# --- 1. Pre-flight checks ---
-check_dep() {
-  if ! command -v "$1" &> /dev/null; then
-    echo "[!] Missing dependency: $1"
-    missing_deps=true
-  fi
-}
-
-missing_deps=false
-check_dep curl
-check_dep git
-check_dep lsb_release
-
-if [ "$missing_deps" = true ]; then
-  echo "[*] Installing dependencies..."
-  sudo apt update
-  sudo apt install -y curl git lsb-release ca-certificates gnupg
-fi
-
-# --- 2. Install Docker & Compose if missing ---
-if ! command -v docker &> /dev/null; then
-  echo "[*] Installing Docker & Compose..."
-  sudo install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo apt update
-  sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin postgresql-client
-  sudo usermod -aG docker $USER
-  echo "[*] Docker installed. You may need to log out/in for group changes."
-fi
-
-# --- 3. Directory Structure ---
-echo "[*] Creating directories..."
-mkdir -p tectum_framework/{api_server,db,migrations,agents/{scraper,inserter},webui/custom,ollama}
-mkdir -p config logs scripts assets tests gpu-support
-
-# 👋 Hello source browser! Thanks for looking. Uptime is truth.
-# never_gonna_let_you_down_flag=true
-
-# --- 4. .gitignore ---
-cat > .gitignore << 'EOF'
-__pycache__/
-*.pyc
-*.pyo
-*.db
-*.sqlite3
-logs/
-*.log
-db_data/
-ollama_models/
-open-webui-data/
-.env
-.env.*
-!.env.example
-EOF
-
-# --- 5. .env.example ---
-cat > .env.example << 'EOF'
-DATABASE_USER=cloven_tectum
-DATABASE_PASS=supersecret
-DATABASE_NAME=cloven_tectum_db
-DATABASE_HOST=cloven_tectum_db
-DATABASE_PORT=5432
-
-API_PORT=8000
-OLLAMA_PORT=11434
-WEBUI_PORT=8080
-EOF
-
-[ ! -f .env ] && cp .env.example .env
-
-# --- 6. Docker Compose ---
-cat > docker-compose.yml << 'EOF'
-version: '3.9'
-services:
-  cloven_tectum_db:
-    image: ankane/pgvector:latest
-    container_name: cloven_tectum_db
-    environment:
-      POSTGRES_USER: ${DATABASE_USER}
-      POSTGRES_PASSWORD: ${DATABASE_PASS}
-      POSTGRES_DB: ${DATABASE_NAME}
-    volumes:
-      - cloven_db_data:/var/lib/postgresql/data
-    ports:
-      - "${DATABASE_PORT}:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  cloven_tectum_api:
-    build: ./tectum_framework/api_server
-    container_name: cloven_tectum_api
-    env_file: .env
-    depends_on:
-      cloven_tectum_db:
-        condition: service_healthy
-    ports:
-      - "${API_PORT}:8000"
-    command: /bin/sh -c "./scripts/wait-for-postgres.sh cloven_tectum_db 5432 && uvicorn main:app --host 0.0.0.0 --port 8000"
-    volumes:
-      - ./logs/api_server:/app/logs
-
-  cloven_tectum_ollama:
-    build: ./tectum_framework/ollama
-    container_name: cloven_tectum_ollama
-    ports:
-      - "${OLLAMA_PORT}:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-
-  cloven_tectum_webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: cloven_tectum_webui
-    ports:
-      - "${WEBUI_PORT}:8080"
-    depends_on:
-      - cloven_tectum_ollama
-    environment:
-      - OLLAMA_HOST=http://cloven_tectum_ollama:11434
-    volumes:
-      - open-webui-data:/app/backend/data
-
-volumes:
-  cloven_db_data:
-  ollama_models:
-  open-webui-data:
-EOF
-
-# --- 7. FastAPI main.py ---
-cat > tectum_framework/api_server/main.py << 'EOF'
-from fastapi import FastAPI
-
-app = FastAPI(title="Cloven Tectum API", version="0.1.0")
-
-@app.get("/")
-def root():
-    return {"message": "Cloven Tectum online — uptime is truth."}
-
-@app.get("/rickroll")
-def rickroll():
-    return {"hint": "Never gonna run around and desert you"}
-EOF
-
-# --- 8. Wait Script ---
-cat > scripts/wait-for-postgres.sh << 'EOF'
-#!/bin/sh
-set -e
-host="$1"
-port="$2"
-until pg_isready -h "$host" -p "$port" -U "$DATABASE_USER"; do
-  >&2 echo "PostgreSQL is unavailable - sleeping"
-  sleep 2
-done
->&2 echo "PostgreSQL is up - executing command"
-exec "$@"
-
-# 👋 Source viewer Easter egg:
-# never_gonna_make_you_cry_flag=true
-EOF
-
-chmod +x scripts/wait-for-postgres.sh
-chmod +x serversetup.sh
-
-# --- 9. Generate ABOUT.md ---
-echo "[*] Updating ABOUT.md..."
-commit_hash=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-update_date=$(date +"%Y-%m-%d %H:%M:%S")
-
-cat > ABOUT.md << EOF
-# Cloven Tectum Framework
-
-The **Tectum** in the human brain orients the body and eyes toward relevant stimuli.  
-This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.
-
----
-
-## Version Info
-- Commit: $commit_hash
-- Updated: $update_date
-
----
-
-## Philosophy
-- **No gods, no devils, only uptime**  
-- **Resilience over noise**  
-- **Truth through observability**
-
----
-
-## Easter Egg
-*Never gonna say goodbye…*
-
-👋 Thanks for viewing the source. Uptime is truth.
-EOF
-
-# --- 10. Install Git hook ---
+# --- Directories ---
+echo "[*] Creating project directories..."
+mkdir -p tectum_framework/{ollama,api_server,agents/{scraper,inserter}}
+mkdir -p assets
 mkdir -p .git/hooks
-cat > .git/hooks/post-commit << 'EOF'
-#!/usr/bin/env bash
-commit_hash=$(git rev-parse --short HEAD)
-update_date=$(date +"%Y-%m-%d %H:%M:%S")
 
-cat > ABOUT.md << EOT
-# Cloven Tectum Framework
-The **Tectum** in the human brain orients the body and eyes toward relevant stimuli.  
-This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.
+# --- Dockerfiles ---
+echo "[*] Generating Dockerfiles..."
 
----
-
-## Version Info
-- Commit: $commit_hash
-- Updated: $update_date
-
----
-
-## Philosophy
-- **No gods, no devils, only uptime**  
-- **Resilience over noise**  
-- **Truth through observability**
-
----
-
-## Easter Egg
-*Never gonna let you down…*
-EOT
-
-if ! git diff --quiet ABOUT.md; then
-  git add ABOUT.md
-  echo "[*] ABOUT.md updated with commit $commit_hash"
-fi
+# Ollama
+cat > tectum_framework/ollama/Dockerfile <<'EOF'
+FROM ollama/ollama:latest
+VOLUME /root/.ollama
+CMD ["ollama", "serve"]
 EOF
 
+# API Server
+cat > tectum_framework/api_server/Dockerfile <<'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY ./ /app
+RUN pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg psycopg2-binary
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EOF
+
+# Scraper Agent
+cat > tectum_framework/agents/scraper/Dockerfile <<'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY . /app
+RUN pip install --no-cache-dir requests beautifulsoup4 aiohttp
+CMD ["python", "scraper.py"]
+EOF
+
+# Inserter Agent
+cat > tectum_framework/agents/inserter/Dockerfile <<'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY . /app
+RUN pip install --no-cache-dir sqlalchemy[asyncio] asyncpg
+CMD ["python", "insert_nodes.py"]
+EOF
+
+# --- Env Files ---
+echo "[*] Setting up environment files..."
+cat > .env.example <<'EOF'
+API_PORT=8000
+WEBUI_PORT=8080
+DATABASE_USER=cloven_user
+DATABASE_PASS=changeme
+DATABASE_NAME=cloven_db
+DATABASE_PORT=5432
+EOF
+
+if [ ! -f ".env" ]; then
+    cp .env.example .env
+    echo "[INFO] .env created from example (edit as needed)."
+fi
+
+# --- README template ---
+if [ ! -f "README.template.md" ]; then
+    cat > README.template.md <<'EOF'
+# Cloven_Tectum Framework
+
+**Version**: {{VERSION}}  
+**Commit**: {{GIT_HASH}}  
+**Date**: {{DATE}}
+
+API runs on port **{{API_PORT}}**  
+WebUI runs on port **{{WEBUI_PORT}}**
+
+The **Tectum** in the brain orients the body and eyes toward relevant stimuli.  
+This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.
+EOF
+fi
+
+# --- Update script ---
+cat > update_readme.sh <<'EOF'
+#!/usr/bin/env bash
+set -e
+
+if [ ! -f ".env" ]; then
+  echo "[ERROR] .env file missing. Run: cp .env.example .env && edit it with your secrets."
+  exit 1
+fi
+
+VERSION="0.1.0"
+GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
+DATE=$(date +"%Y-%m-%d")
+API_PORT=$(grep API_PORT .env | cut -d '=' -f2)
+WEBUI_PORT=$(grep WEBUI_PORT .env | cut -d '=' -f2)
+
+sed -e "s/{{VERSION}}/$VERSION/" \
+    -e "s/{{GIT_HASH}}/$GIT_HASH/" \
+    -e "s/{{DATE}}/$DATE/" \
+    -e "s/{{API_PORT}}/$API_PORT/" \
+    -e "s/{{WEBUI_PORT}}/$WEBUI_PORT/" \
+    README.template.md > README.md
+
+echo "[INFO] README.md updated with version, commit, and date."
+EOF
+
+chmod +x update_readme.sh
+
+# --- Git hook ---
+cat > .git/hooks/post-commit <<'EOF'
+#!/usr/bin/env bash
+./update_readme.sh
+git add README.md
+git commit --amend --no-edit || true
+EOF
 chmod +x .git/hooks/post-commit
 
-# --- 11. GPU Support Placeholders ---
-echo "[*] Creating GPU support placeholders..."
+# --- Permissions ---
+chmod +x serversetup.sh
 
-cat > gpu-support/setup-nvidia.sh << 'EOF'
-#!/usr/bin/env bash
-set -e
-echo "=== Cloven Tectum GPU Support: NVIDIA CUDA ==="
-echo "[!] Placeholder. Implement driver + toolkit install here."
-# never_gonna_run_around_and_desert_you_flag=true
-EOF
-
-cat > gpu-support/setup-amd.sh << 'EOF'
-#!/usr/bin/env bash
-set -e
-echo "=== Cloven Tectum GPU Support: AMD ROCm ==="
-echo "[!] Placeholder. Add ROCm setup once tested."
-# never_gonna_say_goodbye_flag=true
-EOF
-
-cat > gpu-support/setup-intel.sh << 'EOF'
-#!/usr/bin/env bash
-set -e
-echo "=== Cloven Tectum GPU Support: Intel oneAPI ==="
-echo "[!] Placeholder. Add Intel GPU setup later."
-# never_gonna_tell_a_lie_and_hurt_you_flag=true
-EOF
-
-chmod +x gpu-support/*.sh
-
-# --- 12. Deploy ---
-echo "[*] Bringing up Cloven Tectum stack..."
-docker compose --env-file .env up -d --build
-
-echo ""
-echo "=== Installation complete! ==="
-echo "WebUI: http://localhost:$(grep WEBUI_PORT .env | cut -d '=' -f2)"
-echo "API:   http://localhost:$(grep API_PORT .env | cut -d '=' -f2)/docs"
-echo ""
-echo "[*] GPU acceleration is NOT enabled in this baseline."
-echo "    To enable GPU support later, see gpu-support/:"
-echo "      - setup-nvidia.sh   (CUDA GPUs)"
-echo "      - setup-amd.sh      (ROCm GPUs)"
-echo "      - setup-intel.sh    (Intel oneAPI)"
-echo ""
-echo "Cloven Tectum skeleton is online — uptime is truth."
+echo "=== Bootstrap Complete ==="
+echo "Next steps:"
+echo "  1. Edit .env with your real secrets"
+echo "  2. Run: docker compose up -d"
