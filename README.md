@@ -67,9 +67,9 @@ flowchart TB
     subgraph V[Visualization]
         A[WebUI] -->|Models & Results| Ollama
     end
+
+
 ⚡ Parallel Task Execution (Multiple LLMs)
-mermaid
-Copy code
 flowchart TB
     U[User / WebUI] -->|Task Request| G[Cloven_Tectum API]
 
@@ -89,9 +89,18 @@ flowchart TB
     L2 -->|Partial Result| G
     L3 -->|Partial Result| G
     L4 -->|Partial Result| G
-    
+
     G -->|Aggregate & Respond| U
-    end
+
+📘 Explanation
+
+A single user request → API fans out tasks to multiple Ollama-hosted models.
+
+Each LLM runs in parallel, producing partial outputs.
+
+Results are aggregated at the API → returned as one unified response.
+
+This makes the system resilient, scalable, and fast.
 
 Explanation
 A single user request → API fans out tasks to multiple Ollama-hosted models.
