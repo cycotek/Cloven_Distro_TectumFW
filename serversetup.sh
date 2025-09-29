@@ -1,126 +1,295 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Cloven_Tectum Framework: Full Bootstrap ==="
+# =========================
+# Cloven_Tectum One-Click Bootstrap
+# =========================
+# Usage:
+#   ./serversetup.sh            # generate files & compose UP
+#   ./serversetup.sh --no-up    # generate files only
+#   ./serversetup.sh --force    # overwrite existing files
+#
+# Guarantees:
+# - Writes docker-compose.yml
+# - Writes Dockerfiles & minimal code for api + agents
+# - Creates .env if missing (with sane defaults)
+# - Ensures perms; starts containers (unless --no-up)
+#
+# Never gonna give you up. 👋 source viewer.
 
-# --- Directories ---
-echo "[*] Creating project directories..."
-mkdir -p tectum_framework/{ollama,api_server,agents/{scraper,inserter}}
-mkdir -p assets
-mkdir -p .git/hooks
+FORCE=false
+NO_UP=false
+for a in "$@"; do
+  case "$a" in
+    --force) FORCE=true ;;
+    --no-up) NO_UP=true ;;
+    *) echo "[ERROR] Unknown flag: $a"; exit 1 ;;
+  caseesac
+done
 
-# --- Dockerfiles ---
-echo "[*] Generating Dockerfiles..."
+log()  { echo "[*] $*"; }
+warn() { echo "[!] $*"; }
+err()  { echo "[ERROR] $*" >&2; exit 1; }
 
-# Ollama
-cat > tectum_framework/ollama/Dockerfile <<'EOF'
-FROM ollama/ollama:latest
-VOLUME /root/.ollama
-CMD ["ollama", "serve"]
+# Detect docker compose cmd
+if docker compose version >/dev/null 2>&1; then
+  DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  DOCKER_COMPOSE="docker-compose"
+else
+  err "docker compose not found. Install Docker Compose plugin or docker-compose."
+fi
+
+write_file() {
+  # $1 = path, $2 = content
+  local path="$1"
+  if [[ -f "$path" && "$FORCE" == "false" ]]; then
+    log "Skip (exists): $path"
+    return 0
+  fi
+  mkdir -p "$(dirname "$path")"
+  printf "%s" "$2" > "$path"
+  log "Wrote: $path"
+}
+
+append_unique() {
+  # $1 = path, $2 = line
+  local path="$1" line="$2"
+  touch "$path"
+  if ! grep -qxF "$line" "$path" 2>/dev/null; then
+    echo "$line" >> "$path"
+    log "Appended to $(basename "$path"): $line"
+  fi
+}
+
+# ---------- ensure base dirs ----------
+log "Ensuring project directories..."
+mkdir -p tectum_framework/{api_server,ollama,agents/{scraper,inserter}}
+mkdir -p logs assets .git/hooks
+
+# ---------- .gitignore ----------
+write_file ".gitignore" "$(cat <<'EOF'
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local env
+.env
+
+# Docker runtime data
+logs/
+db_data/
+ollama_models/
+open-webui-data/
 EOF
+)"
 
-# API Server
-cat > tectum_framework/api_server/Dockerfile <<'EOF'
-FROM python:3.11-slim
-WORKDIR /app
-COPY ./ /app
-RUN pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg psycopg2-binary
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-EOF
-
-# Scraper Agent
-cat > tectum_framework/agents/scraper/Dockerfile <<'EOF'
-FROM python:3.11-slim
-WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir requests beautifulsoup4 aiohttp
-CMD ["python", "scraper.py"]
-EOF
-
-# Inserter Agent
-cat > tectum_framework/agents/inserter/Dockerfile <<'EOF'
-FROM python:3.11-slim
-WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir sqlalchemy[asyncio] asyncpg
-CMD ["python", "insert_nodes.py"]
-EOF
-
-# --- Env Files ---
-echo "[*] Setting up environment files..."
-cat > .env.example <<'EOF'
-API_PORT=8000
-WEBUI_PORT=8080
+# ---------- .env & example ----------
+if [[ ! -f ".env" || "$FORCE" == "true" ]]; then
+  write_file ".env" "$(cat <<'EOF'
 DATABASE_USER=cloven_user
 DATABASE_PASS=changeme
 DATABASE_NAME=cloven_db
 DATABASE_PORT=5432
-EOF
 
-if [ ! -f ".env" ]; then
-    cp .env.example .env
-    echo "[INFO] .env created from example (edit as needed)."
+API_PORT=8000
+OLLAMA_PORT=11434
+WEBUI_PORT=8080
+EOF
+)"
+fi
+write_file ".env.example" "$(cat .env)"
+
+# ---------- API app ----------
+write_file "tectum_framework/api_server/main.py" "$(cat <<'EOF'
+from fastapi import FastAPI
+
+app = FastAPI(title="Cloven Tectum API", version="0.1.0")
+
+@app.get("/")
+def root():
+    return {"message": "Cloven Tectum online — uptime is truth."}
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.get("/rickroll")
+def rickroll():
+    # never gonna run around and desert you
+    return {"hint": "Never gonna let you down"}
+EOF
+)"
+
+# ---------- Dockerfiles ----------
+write_file "tectum_framework/api_server/Dockerfile" "$(cat <<'EOF'
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY ./ /app
+
+# Minimal deps; DB libs can be added later
+RUN pip install --no-cache-dir fastapi uvicorn[standard]
+
+EXPOSE 8000
+CMD ["uvicorn","main:app","--host","0.0.0.0","--port","8000"]
+EOF
+)"
+
+write_file "tectum_framework/ollama/Dockerfile" "$(cat <<'EOF'
+FROM ollama/ollama:latest
+VOLUME /root/.ollama
+EXPOSE 11434
+CMD ["ollama","serve"]
+EOF
+)"
+
+write_file "tectum_framework/agents/scraper/Dockerfile" "$(cat <<'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY . /app
+RUN pip install --no-cache-dir requests aiohttp beautifulsoup4
+CMD ["python","scraper.py"]
+EOF
+)"
+
+write_file "tectum_framework/agents/inserter/Dockerfile" "$(cat <<'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY . /app
+RUN pip install --no-cache-dir sqlalchemy[asyncio] asyncpg
+CMD ["python","insert_nodes.py"]
+EOF
+)"
+
+# ---------- Agent stubs so containers don't crash ----------
+write_file "tectum_framework/agents/scraper/scraper.py" "$(cat <<'EOF'
+import time, sys
+print("[scraper] starting… (stub) never gonna make you cry")
+try:
+    while True:
+        time.sleep(10)
+        print("[scraper] heartbeat")
+except KeyboardInterrupt:
+    sys.exit(0)
+EOF
+)"
+
+write_file "tectum_framework/agents/inserter/insert_nodes.py" "$(cat <<'EOF'
+import time, sys
+print("[inserter] starting… (stub) never gonna say goodbye")
+try:
+    while True:
+        time.sleep(10)
+        print("[inserter] heartbeat")
+except KeyboardInterrupt:
+    sys.exit(0)
+EOF
+)"
+
+# ---------- docker-compose.yml ----------
+# NOTE: no "version:" key (compose v2 deprecates it)
+# API listens on container:8000 -> host:${API_PORT}
+write_file "docker-compose.yml" "$(cat <<'EOF'
+services:
+  cloven_tectum_db:
+    image: ankane/pgvector:latest
+    container_name: cloven_tectum_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASS}
+      POSTGRES_DB: ${DATABASE_NAME}
+    ports:
+      - "${DATABASE_PORT}:5432"
+    volumes:
+      - cloven_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cloven_tectum_api:
+    build: ./tectum_framework/api_server
+    container_name: cloven_tectum_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - cloven_tectum_db
+    ports:
+      - "${API_PORT}:8000"
+    volumes:
+      - ./tectum_framework/api_server:/app
+
+  cloven_tectum_ollama:
+    build: ./tectum_framework/ollama
+    container_name: cloven_tectum_ollama
+    restart: always
+    ports:
+      - "${OLLAMA_PORT}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+
+  cloven_tectum_webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: cloven_tectum_webui
+    restart: always
+    depends_on:
+      - cloven_tectum_ollama
+    environment:
+      - OLLAMA_HOST=http://cloven_tectum_ollama:11434
+    ports:
+      - "${WEBUI_PORT}:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+
+  cloven_tectum_scraper:
+    build: ./tectum_framework/agents/scraper
+    container_name: cloven_tectum_scraper
+    restart: on-failure
+    env_file:
+      - .env
+    depends_on:
+      - cloven_tectum_api
+
+  cloven_tectum_inserter:
+    build: ./tectum_framework/agents/inserter
+    container_name: cloven_tectum_inserter
+    restart: on-failure
+    env_file:
+      - .env
+    depends_on:
+      - cloven_tectum_api
+
+volumes:
+  cloven_db_data:
+  ollama_models:
+  open-webui-data:
+EOF
+)"
+
+# ---------- perms ----------
+chmod +x serversetup.sh || true
+
+# ---------- bring up ----------
+if [[ "$NO_UP" == "true" ]]; then
+  log "Generation complete (skipping compose up due to --no-up)."
+  exit 0
 fi
 
-# --- README template ---
-if [ ! -f "README.template.md" ]; then
-    cat > README.template.md <<'EOF'
-# Cloven_Tectum Framework
+log "Building & starting containers…"
+$DOCKER_COMPOSE up -d --build
 
-**Version**: {{VERSION}}  
-**Commit**: {{GIT_HASH}}  
-**Date**: {{DATE}}
+API_PORT="$(grep -E '^API_PORT=' .env | cut -d '=' -f2)"
+WEBUI_PORT="$(grep -E '^WEBUI_PORT=' .env | cut -d '=' -f2)"
 
-API runs on port **{{API_PORT}}**  
-WebUI runs on port **{{WEBUI_PORT}}**
-
-The **Tectum** in the brain orients the body and eyes toward relevant stimuli.  
-This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.
-EOF
-fi
-
-# --- Update script ---
-cat > update_readme.sh <<'EOF'
-#!/usr/bin/env bash
-set -e
-
-if [ ! -f ".env" ]; then
-  echo "[ERROR] .env file missing. Run: cp .env.example .env && edit it with your secrets."
-  exit 1
-fi
-
-VERSION="0.1.0"
-GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
-DATE=$(date +"%Y-%m-%d")
-API_PORT=$(grep API_PORT .env | cut -d '=' -f2)
-WEBUI_PORT=$(grep WEBUI_PORT .env | cut -d '=' -f2)
-
-sed -e "s/{{VERSION}}/$VERSION/" \
-    -e "s/{{GIT_HASH}}/$GIT_HASH/" \
-    -e "s/{{DATE}}/$DATE/" \
-    -e "s/{{API_PORT}}/$API_PORT/" \
-    -e "s/{{WEBUI_PORT}}/$WEBUI_PORT/" \
-    README.template.md > README.md
-
-echo "[INFO] README.md updated with version, commit, and date."
-EOF
-
-chmod +x update_readme.sh
-
-# --- Git hook ---
-cat > .git/hooks/post-commit <<'EOF'
-#!/usr/bin/env bash
-./update_readme.sh
-git add README.md
-git commit --amend --no-edit || true
-EOF
-chmod +x .git/hooks/post-commit
-
-# --- Permissions ---
-chmod +x serversetup.sh
-
-echo "=== Bootstrap Complete ==="
-echo "Next steps:"
-echo "  1. Edit .env with your real secrets"
-echo "  2. Run: docker compose up -d"
+echo
+echo "=== Online (expected) ==="
+echo "API docs:  http://localhost:${API_PORT}/docs"
+echo "WebUI:     http://localhost:${WEBUI_PORT}"
+echo
+echo "Check status:   $DOCKER_COMPOSE ps"
+echo "Tail logs:      docker logs -f cloven_tectum_api"
