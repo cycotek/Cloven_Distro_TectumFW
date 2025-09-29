@@ -26,8 +26,6 @@ This project was built with a **DevOps-first mindset**:
 ---
 
 ## 🗂️ Project Structure
-
-```plaintext
 Cloven_Distro_TectumFW/
 ├─ ABOUT.md                 # About page (image, version, commit info)
 ├─ assets/                  # Static assets
@@ -42,9 +40,10 @@ Cloven_Distro_TectumFW/
 ├─ serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
 ├─ update_readme.sh         # Auto-updates README from template + Git metadata
 └─ README.template.md       # Template used by update_readme.sh
+
+
+
 🏗️ Stack Architecture
-mermaid
-Copy code
 flowchart TB
     subgraph U[User Layer]
         A[WebUI] -->|Requests| API
@@ -63,9 +62,8 @@ flowchart TB
     subgraph V[Visualization]
         A[WebUI] -->|Models & Results| Ollama
     end
+
 ⚡ Parallel Task Execution (Multiple LLMs)
-mermaid
-Copy code
 flowchart TB
     U[User / WebUI] -->|Task Request| G[Cloven_Tectum API]
 
@@ -87,6 +85,8 @@ flowchart TB
     L4 -->|Partial Result| G
 
     G -->|Aggregate & Respond| U
+
+
 📘 Explanation
 
 A single user request → API fans out tasks to multiple Ollama-hosted models.
@@ -97,15 +97,14 @@ Results are aggregated back at the API and returned as a unified response.
 
 This makes the system resilient, scalable, and fast.
 
-🚀 Quickstart
-bash
-Copy code
+🚀 Quickstart (bash block)
 # Clone
 git clone https://github.com/cycotek/Cloven_Distro_TectumFW.git
 cd Cloven_Distro_TectumFW
 
 # Bootstrap
 ./serversetup.sh
+
 This will:
 
 Create required directories
