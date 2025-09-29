@@ -24,7 +24,7 @@ for a in "$@"; do
     --force) FORCE=true ;;
     --no-up) NO_UP=true ;;
     *) echo "[ERROR] Unknown flag: $a"; exit 1 ;;
-  caseesac
+  esac
 done
 
 log()  { echo "[*] $*"; }
