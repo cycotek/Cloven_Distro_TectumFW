@@ -27,19 +27,19 @@ This project was built with a **DevOps-first mindset**:
 
 ## 🗂️ Project Structure
 Cloven_Distro_TectumFW/
-├─ ABOUT.md                 # About page (image, version, commit info)
-├─ assets/                  # Static assets
-├─ .env / .env.example      # Environment configuration (DB, ports, etc.)
-├─ tectum_framework/        # Core framework
-│  ├─ api_server/           # FastAPI app (core API services)
-│  ├─ ollama/               # Ollama container for LLM serving
-│  ├─ agents/               # Modular agents
-│  │  ├─ scraper/           # Scraping & ingestion logic
-│  │  └─ inserter/          # Inserts data into DB
-├─ docker-compose.yml       # Orchestrates all containers
-├─ serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
-├─ update_readme.sh         # Auto-updates README from template + Git metadata
-└─ README.template.md       # Template used by update_readme.sh
+    ABOUT.md                 # About page (image, version, commit info)
+    assets/                  # Static assets
+    env / .env.example      # Environment configuration (DB, ports, etc.)
+    tectum_framework/        # Core framework
+    api_server/           # FastAPI app (core API services)
+    ollama/               # Ollama container for LLM serving
+    agents/               # Modular agents
+        scraper/           # Scraping & ingestion logic
+        inserter/          # Inserts data into DB
+    docker-compose.yml       # Orchestrates all containers
+    serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
+    update_readme.sh         # Auto-updates README from template + Git metadata
+    README.template.md       # Template used by update_readme.sh
 
 
 
