@@ -43,7 +43,7 @@ Cloven_Distro_TectumFW/
 
 
 
-🏗️ Stack Architecture
+## 🏗️ Stack Architecture
 flowchart TB
     subgraph U[User Layer]
         A[WebUI] -->|Requests| API
@@ -63,7 +63,7 @@ flowchart TB
         A[WebUI] -->|Models & Results| Ollama
     end
 
-⚡ Parallel Task Execution (Multiple LLMs)
+## ⚡ Parallel Task Execution (Multiple LLMs)
 flowchart TB
     U[User / WebUI] -->|Task Request| G[Cloven_Tectum API]
 
@@ -87,7 +87,8 @@ flowchart TB
     G -->|Aggregate & Respond| U
 
 
-📘 Explanation
+
+## 📘 Explanation
 
 A single user request → API fans out tasks to multiple Ollama-hosted models.
 
@@ -97,7 +98,8 @@ Results are aggregated back at the API and returned as a unified response.
 
 This makes the system resilient, scalable, and fast.
 
-🚀 Quickstart (bash block)
+
+## 🚀 Quickstart (bash block)
 # Clone
 git clone https://github.com/cycotek/Cloven_Distro_TectumFW.git
 cd Cloven_Distro_TectumFW
@@ -121,18 +123,19 @@ API docs → http://localhost:8000/docs
 
 WebUI → http://localhost:8080
 
-🔮 Roadmap
+
+## 🔮 Roadmap
 ✅ Bootstrapper script (serversetup.sh)
 ✅ Basic FastAPI + Ollama + WebUI stack
 ✅ Agents for scraping/inserting
-
 🔲 Narrative drift detection (DB-backed replicas)
 🔲 Real-time metadata analysis (sentiment, credibility, demographics)
 🔲 Home Assistant integration
 🔲 GPU support variants (NVIDIA/AMD/CPU fallback)
 🔲 Voice packages for OpenWebUI
 
-🧩 Philosophy & Easter Eggs
+
+## 🧩 Philosophy & Easter Eggs
 “No gods, no devils, only uptime.” → Resilience as philosophy.
 
 Narrative redundancy → Multiple models defend against distortion.
