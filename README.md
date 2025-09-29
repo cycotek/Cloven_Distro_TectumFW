@@ -1,4 +1,4 @@
-# 🧠 Cloven_Tectum Framework
+ 🧠 Cloven_Tectum Framework
 
 > *“The tectum in the human brain orients the body and eyes toward relevant stimuli.  
 This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.”*
@@ -7,8 +7,8 @@ This framework applies the same principle: orient AI systems toward **meaningful
 
 ## ⚙️ Build Info
 - Version: 0.1.0
-- Commit:  1a6b99a
-- Date:    2025-09-28
+- Commit: 1a6b99a
+- Date: 2025-09-28
 
 ---
 
@@ -27,7 +27,7 @@ This project was built with a **DevOps-first mindset**:
 
 ## 🗂️ Project Structure
 
-
+```plaintext
 Cloven_Distro_TectumFW/
 ├─ ABOUT.md                 # About page (image, version, commit info)
 ├─ assets/                  # Static assets
@@ -42,13 +42,9 @@ Cloven_Distro_TectumFW/
 ├─ serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
 ├─ update_readme.sh         # Auto-updates README from template + Git metadata
 └─ README.template.md       # Template used by update_readme.sh
-
-
----
-
-## 🏗️ Stack Architecture
-
-```mermaid
+🏗️ Stack Architecture
+mermaid
+Copy code
 flowchart TB
     subgraph U[User Layer]
         A[WebUI] -->|Requests| API
@@ -67,9 +63,9 @@ flowchart TB
     subgraph V[Visualization]
         A[WebUI] -->|Models & Results| Ollama
     end
-
-
 ⚡ Parallel Task Execution (Multiple LLMs)
+mermaid
+Copy code
 flowchart TB
     U[User / WebUI] -->|Task Request| G[Cloven_Tectum API]
 
@@ -91,32 +87,24 @@ flowchart TB
     L4 -->|Partial Result| G
 
     G -->|Aggregate & Respond| U
-
 📘 Explanation
 
 A single user request → API fans out tasks to multiple Ollama-hosted models.
 
 Each LLM runs in parallel, producing partial outputs.
 
-Results are aggregated at the API → returned as one unified response.
+Results are aggregated back at the API and returned as a unified response.
 
 This makes the system resilient, scalable, and fast.
 
-Explanation
-A single user request → API fans out tasks to multiple Ollama-hosted models.
-Each LLM runs in parallel, producing partial outputs.
-Results are aggregated back at the API and returned as a unified response.
-This pattern makes the system resilient, scalable, and fast.
-
 🚀 Quickstart
-1. Clone the repo
 bash
 Copy code
+# Clone
 git clone https://github.com/cycotek/Cloven_Distro_TectumFW.git
 cd Cloven_Distro_TectumFW
-2. Bootstrap the stack
-bash
-Copy code
+
+# Bootstrap
 ./serversetup.sh
 This will:
 
@@ -128,10 +116,11 @@ Write Dockerfiles + docker-compose.yml
 
 Launch all services (API, Ollama, DB, WebUI, agents)
 
-3. Access services
+Access:
+
 API docs → http://localhost:8000/docs
 
-WebUI (OpenWebUI) → http://localhost:8080
+WebUI → http://localhost:8080
 
 🔮 Roadmap
 ✅ Bootstrapper script (serversetup.sh)
