@@ -1,17 +1,3 @@
-# Cloven_Tectum Framework
-
-The Tectum in the human brain orients the body and eyes toward **relevant stimuli**.  
-This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.  
-
----
-
-## ⚙️ Build Info
-- Version: 0.1.0
-- Commit:  a39206d
-- Date:    2025-09-28
-
----
-
 # 🧠 Cloven_Tectum Framework
 
 > *“The tectum in the human brain orients the body and eyes toward relevant stimuli.  
@@ -19,10 +5,17 @@ This framework applies the same principle: orient AI systems toward **meaningful
 
 ---
 
+## ⚙️ Build Info
+- Version: {{VERSION}}
+- Commit:  {{GIT_HASH}}
+- Date:    {{DATE}}
+
+---
+
 ## 📖 Overview
 
-The **Cloven_Tectum Framework (CTF)** is a modular, containerized AI framework designed for experimentation, integration, and resilience.  
-It combines a robust backend (PostgreSQL + FastAPI), modern AI runtimes (Ollama, Open WebUI), and modular agents (scrapers, inserters) to create a **fault-tolerant narrative system** that detects distortion, maintains uptime, and generates actionable insights.
+The **Cloven_Tectum Framework (CTF)** is a **framework for resilient stacks of services** — repeatable, self-deploying, and adaptable.  
+It combines a **robust backend** (PostgreSQL + FastAPI), **modern AI runtimes** (Ollama, Open WebUI), and **modular agents** (scrapers, inserters) to create a **fault-tolerant narrative system**.  
 
 This project was built with a **DevOps-first mindset**:
 - 🛠️ **Self-deploying bootstrap script (`serversetup.sh`)**
@@ -34,67 +27,89 @@ This project was built with a **DevOps-first mindset**:
 
 ## 🗂️ Project Structure
 
+```plaintext
 Cloven_Distro_TectumFW/
-├─ ABOUT.md # About page with project image + commit/version info
-├─ assets/ # Static assets (logos, images, etc.)
-├─ .env / .env.example # Environment configuration (DB, ports, etc.)
-├─ tectum_framework/ # Core framework
-│ ├─ api_server/ # FastAPI app (core API services)
-│ ├─ ollama/ # Ollama container for LLM serving
-│ ├─ agents/ # Modular agents
-│ │ ├─ scraper/ # Scraping & ingestion logic
-│ │ └─ inserter/ # Inserts scraped data into DB
-├─ docker-compose.yml # Orchestrates all containers
-├─ serversetup.sh # Bootstrapper (generates files, sets perms, launches stack)
-├─ update_readme.sh # Auto-updates README from template + Git metadata
-└─ README.template.md # Template used by update_readme.sh
+├─ ABOUT.md                 # About page (image, version, commit info)
+├─ assets/                  # Static assets
+├─ .env / .env.example      # Environment configuration (DB, ports, etc.)
+├─ tectum_framework/        # Core framework
+│  ├─ api_server/           # FastAPI app (core API services)
+│  ├─ ollama/               # Ollama container for LLM serving
+│  ├─ agents/               # Modular agents
+│  │  ├─ scraper/           # Scraping & ingestion logic
+│  │  └─ inserter/          # Inserts data into DB
+├─ docker-compose.yml       # Orchestrates all containers
+├─ serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
+├─ update_readme.sh         # Auto-updates README from template + Git metadata
+└─ README.template.md       # Template used by update_readme.sh
+🏗️ Stack Architecture
+mermaid
+Copy code
+flowchart TB
+    subgraph U[User Layer]
+        A[WebUI] -->|Requests| API
+    end
 
+    subgraph F[Framework Layer]
+        API[FastAPI Server] -->|Inserts| DB[(PostgreSQL + pgvector)]
+        API --> Ollama[Ollama Runtime]
+        API --> Agents[Scraper + Inserter]
+    end
 
----
+    subgraph S[Storage & State]
+        DB[(PostgreSQL DB)]
+    end
 
-## 🚀 Quickstart
+    subgraph V[Visualization]
+        A[WebUI] -->|Models & Results| Ollama
+    end
+⚡ Parallel Task Execution (Multiple LLMs)
+mermaid
+Copy code
+flowchart TB
+    U[User / WebUI] -->|Task Request| G[Cloven_Tectum API]
 
-### 1. Clone the repo
-```bash
-git clone https://github.com/cycotek/Cloven_Distro_TectumFW.git
-cd Cloven_Distro_TectumFW
-2. Bootstrap the stack
+    subgraph O[Ollama Runtime]
+        L1[LLM Instance 1]
+        L2[LLM Instance 2]
+        L3[LLM Instance 3]
+        L4[LLM Instance N]
+    end
+
+    G -->|Fan Out Tasks| L1
+    G --> L2
+    G --> L3
+    G --> L4
+
+    L1 -->|Partial Result| G
+    L2 -->|Partial Result| G
+    L3 -->|Partial Result| G
+    L4 -->|Partial Result| G
+
+    G -->|Aggregate & Respond| U
+Explanation:
+
+A single user request → API fans out tasks to multiple Ollama-hosted models.
+
+Each LLM runs in parallel, producing partial outputs.
+
+Results are aggregated back at the API and returned as a unified response.
+
+This pattern makes the system resilient, scalable, and fast.
+
+🚀 Quickstart
 bash
 Copy code
+# Clone
+git clone https://github.com/cycotek/Cloven_Distro_TectumFW.git
+cd Cloven_Distro_TectumFW
+
+# Bootstrap
 ./serversetup.sh
-Creates required directories
 
-Generates .env (if missing)
-
-Writes Dockerfiles + docker-compose.yml
-
-Launches all services (api, ollama, db, webui, agents)
-
-3. Access services
-API docs → http://localhost:8000/docs
-
-WebUI (OpenWebUI) → http://localhost:8080
-
-⚙️ Services
-Service	Description	Port
-API Server	FastAPI for health checks, agents, integrations	8000
-Database	PostgreSQL (with pgvector for embeddings)	5432
-Ollama Runtime	Local LLM hosting	11434
-OpenWebUI	Frontend for interacting with models	8080
-Scraper Agent	Stub for scraping & ingesting external data	N/A
-Inserter Agent	Stub for inserting into DB	N/A
-
-🧩 Philosophy & Easter Eggs
-This repo is as much philosophy as it is code:
-
-“No gods, no devils, only uptime.” → The system prioritizes resilience and truth.
-
-Narrative redundancy → Like fault tolerance in distributed systems, multiple narrative “replicas” defend against distortion.
-
-Easter Eggs → Source code contains subtle references to Rick Astley’s “Never Gonna Give You Up.” A nod to persistence, uptime, and resilience.
-
-Transparency → Logs, metrics, and self-healing workflows.
-
+# Access
+# API → http://localhost:8000/docs
+# WebUI → http://localhost:8080
 🔮 Roadmap
 ✅ Bootstrapper script (serversetup.sh)
 
@@ -112,5 +127,33 @@ Transparency → Logs, metrics, and self-healing workflows.
 
 🔲 Voice packages for OpenWebUI
 
+🧩 Philosophy & Easter Eggs
+No gods, no devils, only uptime. → Resilience as philosophy.
+
+Narrative redundancy → Multiple models defend against distortion.
+
+Transparency → Logs, metrics, and self-healing workflows.
+
+Easter Eggs → Source contains hidden lyrics & acknowledgements 😉.
+
 📝 License
 MIT License © 2025 Cycotek & Contributors
+
+## 🗂️ Project Structure
+
+Cloven_Distro_TectumFW/
+	ABOUT.md 
+	assets/ # Static assets
+	.env / .env.example # Environment configuration (DB, ports, etc.)
+	tectum_framework/ # Core framework
+		api_server/ # FastAPI app (core API services)
+		ollama/ # Ollama container for LLM serving
+		agents/ # Modular agents
+			scraper/ # Scraping & ingestion logic
+			inserter/ # Inserts scraped data into DB
+	docker-compose.yml # Orchestrates all containers
+	serversetup.sh # Bootstrapper (generates files, sets perms, launches stack)
+	update_readme.sh # Auto-updates README from template + Git metadata
+	README.template.md # Template used by update_readme.sh
+
+
