@@ -27,7 +27,7 @@ This project was built with a **DevOps-first mindset**:
 
 ## 🗂️ Project Structure
 
-```plaintext
+
 Cloven_Distro_TectumFW/
 ├─ ABOUT.md                 # About page (image, version, commit info)
 ├─ assets/                  # Static assets
@@ -42,7 +42,7 @@ Cloven_Distro_TectumFW/
 ├─ serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
 ├─ update_readme.sh         # Auto-updates README from template + Git metadata
 └─ README.template.md       # Template used by update_readme.sh
-```plaintext
+
 
 ---
 
@@ -91,6 +91,8 @@ flowchart TB
     L4 -->|Partial Result| G
     
     G -->|Aggregate & Respond| U
+    end
+
 Explanation
 A single user request → API fans out tasks to multiple Ollama-hosted models.
 Each LLM runs in parallel, producing partial outputs.
