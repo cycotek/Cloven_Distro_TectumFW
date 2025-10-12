@@ -43,3 +43,16 @@ sed -e "s/{{VERSION}}/$VERSION/g" \
 "$template" > "$output"
 echo "✅ Generated $output"
 done
+
+# ... existing bootstrap logic ...
+
+# Start containers
+docker compose up -d --build
+
+# After startup, generate README / ABOUT
+if [[ -f "./update_readme.sh" ]]; then
+  echo "[*] Running update_readme.sh"
+  ./update_readme.sh
+else
+  echo "[!] update_readme.sh not found; skipping doc generation"
+fi
