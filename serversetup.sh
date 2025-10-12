@@ -68,22 +68,86 @@ mkdir -p tectum_framework/{api_server,ollama,agents/{scraper,inserter}}
 mkdir -p logs assets .git/hooks
 
 # ---------- .gitignore ----------
-write_file ".gitignore" "$(cat <<'EOF'
-# Python
+# ---------- .dockerignore ----------
+write_file ".dockerignore" "$(cat <<'EOF'
+# Python bytecode / cache
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
 
-# Local env
+# Virtual environments & Python tooling
+**/venv/
+**/.venv/
+**/.pytest_cache/
+**/__pycache__/
+*.egg-info/
+*.eggs/
+
+# Secrets and env
 .env
+.env.*
+*.secret
+secrets/
+*.key
+*.pem
+.envrc
 
-# Docker runtime data
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+
+# Agent-specific cache
+tectum_framework/agents/*/__pycache__/
+tectum_framework/agents/*/*.pyc
+
+# Docker-related
+*.log
 logs/
-db_data/
+docker-compose.override.yml
+docker-compose.*.yml
+**/Dockerfile.*.backup
+**/tmp/
+**/.docker/
+**/build/
+volumes/
+data/
+
+# Node.js (if used in agents)
+**/node_modules/
+
+# Ollama cache + blobs
 ollama_models/
+**/blobs/
+**/.ollama/
+root/.ollama/
+models/
+.ollama/
+
+# OpenWebUI runtime and cache
 open-webui-data/
+**/webui_settings/
+**/backend/data/
+
+# System junk
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.orig
+*.old
+*.tar
+*.gz
+*.zip
+*.tgz
+*.lock
+
+# Autogen or CI artifacts
+README_autogen.md
 EOF
 )"
+
 
 # ---------- .env & example ----------
 if [[ ! -f ".env" || "$FORCE" == "true" ]]; then
