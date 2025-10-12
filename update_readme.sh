@@ -1,18 +1,45 @@
-#!/usr/bin/env bash
+### ✅ Final `update_readme.sh`
+
+
+```bash
+#!/bin/bash
+
+
+# ---- Auto-generate README.md and ABOUT.md from templates ----
+
+
 set -e
 
+
+# Metadata
+GIT_HASH=$(git rev-parse --short HEAD)
+DATE=$(date '+%Y-%m-%d')
+VERSION_FILE=".version"
+
+
+# Auto-increment patch version
+if [ -f "$VERSION_FILE" ]; then
+VERSION=$(cat $VERSION_FILE)
+MAJOR=$(echo $VERSION | cut -d. -f1)
+MINOR=$(echo $VERSION | cut -d. -f2)
+PATCH=$(echo $VERSION | cut -d. -f3)
+PATCH=$((PATCH + 1))
+VERSION="$MAJOR.$MINOR.$PATCH"
+else
 VERSION="0.1.0"
-GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
-DATE=$(date +"%Y-%m-%d")
+fi
 
-API_PORT=$(grep API_PORT .env | cut -d '=' -f2)
-WEBUI_PORT=$(grep WEBUI_PORT .env | cut -d '=' -f2)
 
-sed -e "s/{{VERSION}}/$VERSION/" \
-    -e "s/{{GIT_HASH}}/$GIT_HASH/" \
-    -e "s/{{DATE}}/$DATE/" \
-    -e "s/{{API_PORT}}/$API_PORT/" \
-    -e "s/{{WEBUI_PORT}}/$WEBUI_PORT/" \
-    README.template.md > README.md
+# Save new version
+echo $VERSION > $VERSION_FILE
 
-echo "[INFO] README.md updated with version, commit, and date."
+
+# Replace placeholders in README
+for template in README.template.md ABOUT.template.md; do
+output="${template%.template.md}.md"
+sed -e "s/{{VERSION}}/$VERSION/g" \
+-e "s/{{GIT_HASH}}/$GIT_HASH/g" \
+-e "s/{{DATE}}/$DATE/g" \
+"$template" > "$output"
+echo "✅ Generated $output"
+done
