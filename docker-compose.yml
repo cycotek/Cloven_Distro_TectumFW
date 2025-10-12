@@ -29,8 +29,12 @@ services:
     container_name: cloven_tectum_ollama
     restart: always
     ports:
-      - "${OLLAMA_PORT}:11434"
+      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
     volumes:
+      - ollama_models:/root/.ollama
+
       - ollama_models:/root/.ollama
 
   cloven_tectum_webui:
@@ -42,7 +46,7 @@ services:
     environment:
       - OLLAMA_HOST=http://cloven_tectum_ollama:11434
     ports:
-      - "${WEBUI_PORT}:8080"
+      - "${WEBUI_PORT:-8080}:8080"
     volumes:
       - open-webui-data:/app/backend/data
 
