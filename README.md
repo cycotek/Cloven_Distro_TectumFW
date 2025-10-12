@@ -1,4 +1,4 @@
-## 🧠 Cloven_Tectum Framework
+# 🧠 Cloven_Tectum Framework
 
 > *“The tectum in the human brain orients the body and eyes toward relevant stimuli.  
 This framework applies the same principle: orient AI systems toward **meaningful signal**, shielding them from distortion and noise.”*
@@ -7,8 +7,8 @@ This framework applies the same principle: orient AI systems toward **meaningful
 
 ## ⚙️ Build Info
 - Version: 0.1.0
-- Commit: 1a6b99a
-- Date: 2025-09-28
+- Commit:  b924394
+- Date:    2025-10-11
 
 ---
 
@@ -26,24 +26,29 @@ This project was built with a **DevOps-first mindset**:
 ---
 
 ## 🗂️ Project Structure
+
+```plaintext
 Cloven_Distro_TectumFW/
-    ABOUT.md                 # About page (image, version, commit info)
-    assets/                  # Static assets
-    env / .env.example      # Environment configuration (DB, ports, etc.)
-    tectum_framework/        # Core framework
-    api_server/           # FastAPI app (core API services)
-    ollama/               # Ollama container for LLM serving
-    agents/               # Modular agents
-        scraper/           # Scraping & ingestion logic
-        inserter/          # Inserts data into DB
-    docker-compose.yml       # Orchestrates all containers
-    serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
-    update_readme.sh         # Auto-updates README from template + Git metadata
-    README.template.md       # Template used by update_readme.sh
+├─ ABOUT.md                 # About page (image, version, commit info)
+├─ assets/                  # Static assets
+├─ .env / .env.example      # Environment configuration (DB, ports, etc.)
+├─ tectum_framework/        # Core framework
+│  ├─ api_server/           # FastAPI app (core API services)
+│  ├─ ollama/               # Ollama container for LLM serving
+│  ├─ agents/               # Modular agents
+│  │  ├─ scraper/           # Scraping & ingestion logic
+│  │  └─ inserter/          # Inserts data into DB
+├─ docker-compose.yml       # Orchestrates all containers
+├─ serversetup.sh           # Bootstrapper (generates files, sets perms, launches stack)
+├─ update_readme.sh         # Auto-updates README from template + Git metadata
+└─ README.template.md       # Template used by update_readme.sh
+```plaintext
 
-
+---
 
 ## 🏗️ Stack Architecture
+
+```mermaid
 flowchart TB
     subgraph U[User Layer]
         A[WebUI] -->|Requests| API
@@ -62,8 +67,9 @@ flowchart TB
     subgraph V[Visualization]
         A[WebUI] -->|Models & Results| Ollama
     end
-
-## ⚡ Parallel Task Execution (Multiple LLMs)
+⚡ Parallel Task Execution (Multiple LLMs)
+mermaid
+Copy code
 flowchart TB
     U[User / WebUI] -->|Task Request| G[Cloven_Tectum API]
 
@@ -83,30 +89,24 @@ flowchart TB
     L2 -->|Partial Result| G
     L3 -->|Partial Result| G
     L4 -->|Partial Result| G
-
+    
     G -->|Aggregate & Respond| U
-
-
-
-## 📘 Explanation
-
+Explanation
 A single user request → API fans out tasks to multiple Ollama-hosted models.
-
 Each LLM runs in parallel, producing partial outputs.
-
 Results are aggregated back at the API and returned as a unified response.
+This pattern makes the system resilient, scalable, and fast.
 
-This makes the system resilient, scalable, and fast.
-
-
-## 🚀 Quickstart (bash block)
-# Clone
+🚀 Quickstart
+1. Clone the repo
+bash
+Copy code
 git clone https://github.com/cycotek/Cloven_Distro_TectumFW.git
 cd Cloven_Distro_TectumFW
-
-# Bootstrap
+2. Bootstrap the stack
+bash
+Copy code
 ./serversetup.sh
-
 This will:
 
 Create required directories
@@ -117,26 +117,23 @@ Write Dockerfiles + docker-compose.yml
 
 Launch all services (API, Ollama, DB, WebUI, agents)
 
-Access:
-
+3. Access services
 API docs → http://localhost:8000/docs
 
-WebUI → http://localhost:8080
+WebUI (OpenWebUI) → http://localhost:8080
 
-
-## 🔮 Roadmap
-
+🔮 Roadmap
 ✅ Bootstrapper script (serversetup.sh)
 ✅ Basic FastAPI + Ollama + WebUI stack
 ✅ Agents for scraping/inserting
+
 🔲 Narrative drift detection (DB-backed replicas)
 🔲 Real-time metadata analysis (sentiment, credibility, demographics)
 🔲 Home Assistant integration
 🔲 GPU support variants (NVIDIA/AMD/CPU fallback)
 🔲 Voice packages for OpenWebUI
 
-
-## 🧩 Philosophy & Easter Eggs
+🧩 Philosophy & Easter Eggs
 “No gods, no devils, only uptime.” → Resilience as philosophy.
 
 Narrative redundancy → Multiple models defend against distortion.
