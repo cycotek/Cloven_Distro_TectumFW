@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tectum-logo.png" alt="Tectum Logo" width="250"/>
+  <img src="assets/cloven_brain.png" alt="Tectum Logo" width="200"/>
 </p>
 
 # Cloven Distro: TectumFW 🧠🕸️
