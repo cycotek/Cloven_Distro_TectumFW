@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="assets/cloven_brain.png" alt="Tectum Logo" width="200"/>
-</p>
-
-<p align="center">
   <img src="assets/logo.png" alt="Cloven Tectum Logo" width="250"/>
 </p>
 
@@ -75,6 +71,9 @@ Cloven_Distro_TectumFW/
 
 Created by **Cloven** – _“No gods. No devils. Only uptime.”_
 
+<p align="center">
+  <img src="assets/cloven_brain.png" alt="Tectum Logo" width="200"/>
+</p>
 ---
 
 ## 📜 License
