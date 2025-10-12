@@ -1,120 +1,165 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
 
-# =========================
-# Cloven_Tectum One-Click Bootstrap
-# =========================
-# Usage:
-#   ./serversetup.sh              # generate files & compose UP
-#   ./serversetup.sh --no-up      # generate files only
-#   ./serversetup.sh --force      # overwrite existing files
-#   ./serversetup.sh --purge      # remove volumes and rebuild clean
-#   ./serversetup.sh --dry-run    # simulate the above
-#
-# Never gonna give you up. Never gonna let you down. 🖤
+set -e
 
-FORCE=false
-NO_UP=false
-PURGE=false
+# ─── CONFIGURATION ─────────────────────────────────────────────────────────────
+ENV_FILE=".env"
+VERSION_FILE=".version"
+README_TEMPLATE="README.template.md"
+ABOUT_TEMPLATE="ABOUT.template.md"
+README_OUTPUT="README.md"
+ABOUT_OUTPUT="ABOUT.md"
+LOG_FILE="build_log.txt"
+
+# ─── FLAGS ─────────────────────────────────────────────────────────────────────
 DRY_RUN=false
 
-for a in "$@"; do
-  case "$a" in
-    --force) FORCE=true ;;
-    --no-up) NO_UP=true ;;
-    --purge) PURGE=true ;;
-    --dry-run) DRY_RUN=true ;;
-    *) echo "[ERROR] Unknown flag: $a"; exit 1 ;;
-  esac
+for arg in "$@"; do
+    if [[ "$arg" == "--dry-run" ]]; then
+        DRY_RUN=true
+        echo "[Dry Run] No changes will be made."
+    fi
 done
 
-log()  { echo -e "[*] $*"; }
-warn() { echo -e "[!] $*"; }
-err()  { echo -e "[ERROR] $*" >&2; exit 1; }
-
-# Docker Compose
-if docker compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker-compose"
+# ─── CLEANUP ───────────────────────────────────────────────────────────────────
+echo "[+] Checking for existing containers..."
+if $DRY_RUN; then
+    echo "[Dry Run] Would remove existing containers related to Cloven_Tectum"
 else
-  err "docker compose not found. Install Docker Compose plugin or docker-compose."
+    docker ps -a --filter "name=cloven_tectum_" --format "{{.Names}}" | while read -r name; do
+        echo "[-] Removing container: $name"
+        docker rm -f "$name"
+    done
 fi
 
-# Check and shut down running containers from this project
-if [[ "$DRY_RUN" == false ]]; then
-  log "Checking for existing containers..."
-  $DOCKER_COMPOSE down || true
+# ─── VERSION BUMP ──────────────────────────────────────────────────────────────
+if [[ ! -f "$VERSION_FILE" ]]; then
+    echo "0.1.0" > "$VERSION_FILE"
 fi
 
-# Purge volumes if requested
-if [[ "$PURGE" == true ]]; then
-  log "Purging volumes..."
-  if [[ "$DRY_RUN" == false ]]; then
-    $DOCKER_COMPOSE down -v || true
-  else
-    log "[dry-run] Would run: $DOCKER_COMPOSE down -v"
-  fi
-fi
+OLD_VERSION=$(cat "$VERSION_FILE")
+IFS='.' read -r major minor patch <<< "$OLD_VERSION"
+NEW_VERSION="$major.$minor.$((patch + 1))"
+echo "$NEW_VERSION" > "$VERSION_FILE"
+echo "[✓] Version bumped: $OLD_VERSION → $NEW_VERSION"
 
-# Core paths
-mkdir -p tectum_framework/{api_server,ollama,agents/{scraper,inserter}} logs assets .git/hooks
+# ─── GIT INFO ──────────────────────────────────────────────────────────────────
+GIT_HASH=$(git rev-parse --short HEAD || echo "unknown")
+BUILD_DATE=$(date "+%Y-%m-%d")
 
-# Validate .env
-if grep -q "changeme" .env 2>/dev/null; then
-  warn "Insecure .env password detected — change DATABASE_PASS."
-fi
-
-# Git pre-commit to avoid bad commits
-if [[ ! -f ".git/hooks/pre-commit" ]]; then
-  cat <<'EOF' > .git/hooks/pre-commit
-#!/bin/bash
-if git diff --cached --name-only | grep -E '\.env|ollama_models|open-webui-data'; then
-  echo "Pre-commit: Do not commit sensitive or runtime data."
-  exit 1
-fi
+# ─── ENV FILE ──────────────────────────────────────────────────────────────────
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "[+] Creating default .env"
+    cat <<EOF > "$ENV_FILE"
+# Auto-generated .env
+DATABASE_USER=cloven
+DATABASE_PASS=clovenpass
+DATABASE_NAME=tectum
+DATABASE_PORT=5432
+API_PORT=8000
+WEBUI_PORT=8080
+OLLAMA_PORT=11434
 EOF
-  chmod +x .git/hooks/pre-commit
-  log "Added pre-commit hook."
 fi
 
-# Optional: Git + timestamp metadata
-echo "Build: $(date -Iseconds)" > build_info.txt
-git rev-parse HEAD >> build_info.txt 2>/dev/null || echo "(not in git)" >> build_info.txt
+# ─── DOCKER COMPOSE ────────────────────────────────────────────────────────────
+echo "[+] Writing docker-compose.yml..."
+cat <<EOF > docker-compose.yml
+version: '3.8'
+services:
+  cloven_tectum_db:
+    image: ankane/pgvector:latest
+    container_name: cloven_tectum_db
+    restart: always
+    environment:
+      POSTGRES_USER: \${DATABASE_USER}
+      POSTGRES_PASSWORD: \${DATABASE_PASS}
+      POSTGRES_DB: \${DATABASE_NAME}
+    ports:
+      - "\${DATABASE_PORT}:5432"
+    volumes:
+      - cloven_db_data:/var/lib/postgresql/data
 
-# Start Docker Compose (unless skipped)
-if [[ "$NO_UP" == false ]]; then
-  log "Building and starting containers..."
-  if [[ "$DRY_RUN" == false ]]; then
-    $DOCKER_COMPOSE up -d --build
-  else
-    log "[dry-run] Would run: $DOCKER_COMPOSE up -d --build"
-  fi
-fi
+  cloven_tectum_api:
+    build: ./tectum_framework/api_server
+    container_name: cloven_tectum_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - cloven_tectum_db
+    ports:
+      - "\${API_PORT}:8000"
+    volumes:
+      - ./tectum_framework/api_server:/app
 
-# Wait briefly then check API health
-if [[ "$DRY_RUN" == false ]]; then
-  sleep 3
-  API_PORT=$(grep -E '^API_PORT=' .env | cut -d '=' -f2)
-  WEBUI_PORT=$(grep -E '^WEBUI_PORT=' .env | cut -d '=' -f2)
+  cloven_tectum_ollama:
+    build: ./tectum_framework/ollama
+    container_name: cloven_tectum_ollama
+    restart: always
+    ports:
+      - "\${OLLAMA_PORT}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
 
-  log "Checking API health..."
-  curl -sf http://localhost:$API_PORT/health && echo "[✓] API is healthy" || echo "[X] API not responding"
+  cloven_tectum_webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: cloven_tectum_webui
+    restart: always
+    depends_on:
+      - cloven_tectum_ollama
+    environment:
+      - OLLAMA_HOST=http://cloven_tectum_ollama:11434
+    ports:
+      - "\${WEBUI_PORT}:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
 
-  log "Checking /rickroll..."
-  curl -s http://localhost:$API_PORT/rickroll | grep -q 'Never gonna let you down' && log "Sanity test passed." || warn "Rickroll sanity test failed."
+  cloven_tectum_scraper:
+    build: ./tectum_framework/agents/scraper
+    container_name: cloven_tectum_scraper
+    restart: on-failure
+    env_file:
+      - .env
+    depends_on:
+      - cloven_tectum_api
 
-  log "Checking WebUI: http://localhost:$WEBUI_PORT"
+  cloven_tectum_inserter:
+    build: ./tectum_framework/agents/inserter
+    container_name: cloven_tectum_inserter
+    restart: on-failure
+    env_file:
+      - .env
+    depends_on:
+      - cloven_tectum_api
 
-  # Ollama model check (example: gemma)
-  if docker exec cloven_tectum_ollama ollama list | grep -q "gemma"; then
-    log "Ollama model 'gemma' already available."
-  else
-    log "Pulling default model: gemma:2b"
-    docker exec cloven_tectum_ollama ollama pull gemma:2b || warn "Model pull failed"
-  fi
+volumes:
+  cloven_db_data:
+  ollama_models:
+  open-webui-data:
+EOF
 
-  log "Setup complete."
+# ─── UPDATE MARKDOWN FILES ─────────────────────────────────────────────────────
+echo "[+] Updating README.md and ABOUT.md..."
+for template in "$README_TEMPLATE" "$ABOUT_TEMPLATE"; do
+    if [[ -f "$template" ]]; then
+        sed -e "s|{{VERSION}}|$NEW_VERSION|g" \
+            -e "s|{{GIT_HASH}}|$GIT_HASH|g" \
+            -e "s|{{DATE}}|$BUILD_DATE|g" \
+            "$template" > "${template%.template.md}.md"
+    fi
+done
+
+# ─── DOCKER COMPOSE UP ─────────────────────────────────────────────────────────
+if $DRY_RUN; then
+    echo "[Dry Run] Would run: docker compose up -d --build"
 else
-  log "Dry run complete. No changes made."
+    echo "[✓] Starting containers..."
+    docker compose up -d --build
 fi
+
+# ─── DONE ──────────────────────────────────────────────────────────────────────
+echo -e "\n[✔] Cloven_Tectum is ready. Access:\n"
+echo "• API Docs:        http://localhost:8000/docs"
+echo "• WebUI (OpenUI):  http://localhost:8080"
+echo -e "\n[✔] Version: $NEW_VERSION | Commit: $GIT_HASH | Date: $BUILD_DATE"
