@@ -39,7 +39,7 @@ Cloven Tectum follows a tiered AI architecture:
 ## 🛠️ Getting Started
 
 ```bash
-git clone https://github.com/yourname/Cloven_TectumFW.git
+git clone https://github.com/cycotek/Cloven_Distro_TectumFW
 cd Cloven_TectumFW
 ./serversetup.sh
 ```
