@@ -1,7 +1,9 @@
 # Cloven_Tectum Framework
 
-![Cloven Banner](assets/cloven_brain.png)
-
+<p align="center">
+  <img src="assets/cloven_brain.png" alt="Cloven Banner" width="200"/><br>
+  <em><small>The Cloven Tectum Framework • Oriented toward meaningful signal</small></em>
+</p>
 **Version**: `{{VERSION}}`  
 **Commit**: `{{GIT_HASH}}`  
 **Updated**: `{{DATE}}`
