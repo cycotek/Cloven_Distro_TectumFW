@@ -17,6 +17,10 @@ secrets/
 .idea/
 *.swp
 
+# Agent garbage
+tectum_framework/agents/*/__pycache__/
+tectum_framework/agents/*/*.pyc
+
 # Docker-related
 *.log
 docker-compose.override.yml
