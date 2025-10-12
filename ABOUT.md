@@ -1,6 +1,9 @@
 # About Cloven Distro – Tectum Framework
 
-![Cloven Banner](assets/cloven_brain.png)
+<p align="center">
+  <img src="assets/cloven_brain.png" alt="Cloven Banner" width="400"/><br>
+  <em><small>The Cloven Tectum Framework • Oriented toward meaningful signal</small></em>
+</p>
 
 **Version**: `v0.1.0`  
 **Commit**: `{{GIT_SHORT_HASH}}`  
