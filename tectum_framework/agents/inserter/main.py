@@ -1,1 +1,1 @@
-print("[inserter agent] running...")
+print("[Inserter] Agent starting... (stub)")

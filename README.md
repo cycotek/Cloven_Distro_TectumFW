@@ -5,9 +5,9 @@
   <em><small>The Cloven Tectum Framework • Oriented toward meaningful signal</small></em>
 </p>
 
-**Version**: `0.1.0`  
-**Commit**: `8828d8c`  
-**Updated**: `2025-10-11`
+**Version**: `0.1.1`  
+**Commit**: `0d8e6b9`  
+**Updated**: `2025-10-12`
 
 ---
 

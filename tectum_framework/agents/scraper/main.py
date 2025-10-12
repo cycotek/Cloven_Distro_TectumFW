@@ -1,1 +1,1 @@
-print("[scraper agent] running...")
+print("[Scraper] Agent starting... (stub)")
