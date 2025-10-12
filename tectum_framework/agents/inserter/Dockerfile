@@ -1,5 +1,5 @@
 FROM python:3.11
 WORKDIR /app
 COPY . .
-RUN pip install psycopg2-binary
-CMD ["python", "main.py"]
+RUN pip install -r requirements.txt
+CMD ["python3", "inserter.py"]
