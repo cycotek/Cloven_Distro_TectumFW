@@ -26,7 +26,7 @@ This project is built with a DevOps‑first mindset:
 
 ## 🗂️ Project Structure
 
-```plaintext
+
 Cloven_Distro_TectumFW/
 ├─ ABOUT.md                 # About page (vision + metadata)
 ├─ assets/                  # Static assets
@@ -41,7 +41,7 @@ Cloven_Distro_TectumFW/
 ├─ serversetup.sh           # Bootstrapper
 ├─ update_readme.sh         # Generates README & ABOUT
 └─ README.template.md       # Template with placeholders
-```plaintext
+
 
 ---
 
