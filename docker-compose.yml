@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   cloven_tectum_db:
     image: ankane/pgvector:latest
@@ -52,7 +54,7 @@ services:
     volumes:
       - open-webui-data:/app/backend/data
       - ollama_models:/root/.ollama
-
+      - ./webui_settings/settings.json:/app/backend/data/settings.json:ro
 
   cloven_tectum_scraper:
     build: ./tectum_framework/agents/scraper

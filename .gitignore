@@ -1,24 +1,69 @@
-# Python
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
-*.db
-*.sqlite3
 
-# Logs
-logs/
-*.log
-
-# Docker volumes
-db_data/
-ollama_models/
-open-webui-data/
-
-# Env
+# Environment and config
 .env
 .env.*
-!.env.example
-__pycache__/
-*.pyc
-logs/
+*.secret
+secrets/
+*.key
+*.pem
+
+# VSCode and IDE configs
+.vscode/
+.idea/
+*.swp
+
+# Docker-related
+*.log
+docker-compose.override.yml
+docker-compose.*.yml
+**/Dockerfile.*.backup
+**/tmp/
+**/.docker/
+**/logs/
+**/build/
+**/.envrc
+
+# Volumes and mounts
+volumes/
+data/
+**/node_modules/
+**/venv/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+
+# Ollama models & blobs
+**/blobs/
+**/.ollama/
+root/.ollama/
+models/
+.ollama/
+
+# OpenWebUI data (SQLite DBs and model cache)
+open-webui-data/
+**/webui_settings/
+**/backend/data/
+
+# System files
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.orig
+*.old
+*.tar.gz
+*.zip
+
+# GitHub files (optional)
+*.tgz
+*.lock
+*.tar
+*.gz
+
+# Ignore readme auto-gen artifacts
+README_autogen.md
