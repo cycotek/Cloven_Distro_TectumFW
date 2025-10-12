@@ -1,164 +1,164 @@
 #!/bin/bash
+# serversetup.sh - Bootstrapper for Cloven_Tectum Framework
 
 set -e
 
-PROJECT_NAME="Cloven_Tectum"
+###############################
+# 📦 Metadata & Versioning
+###############################
 VERSION_FILE=".version"
-DRY_RUN=false
+ABOUT_TEMPLATE="ABOUT.template.md"
+README_TEMPLATE="README.template.md"
 
-# --- Helpers ---
-info()  { echo -e "\033[1;34m[+]\033[0m $1"; }
-done_() { echo -e "\033[1;32m[✓]\033[0m $1"; }
-warn()  { echo -e "\033[1;33m[!]\033[0m $1"; }
-
-# --- Dry run check ---
-if [[ "$1" == "--dry-run" ]]; then
-  DRY_RUN=true
-  info "Running in dry-run mode..."
+if [ ! -f "$VERSION_FILE" ]; then
+  echo "0.1.0" > "$VERSION_FILE"
 fi
 
-# --- Shut down old containers ---
-info "Checking for existing containers..."
-if ! $DRY_RUN; then
-  docker ps -a --filter "name=cloven_tectum_" --format "{{.Names}}" | \
-    xargs -r docker rm -f
-fi
+OLD_VERSION=$(cat "$VERSION_FILE")
+IFS='.' read -r major minor patch <<< "$OLD_VERSION"
+NEW_VERSION="$major.$minor.$((patch + 1))"
+echo "$NEW_VERSION" > "$VERSION_FILE"
+echo "[✓] Version bumped: $OLD_VERSION → $NEW_VERSION"
 
-# --- Version bump ---
-if [ -f "$VERSION_FILE" ]; then
-  CUR_VER=$(cat $VERSION_FILE)
-  MAJOR=$(echo "$CUR_VER" | cut -d. -f1)
-  MINOR=$(echo "$CUR_VER" | cut -d. -f2)
-  PATCH=$(echo "$CUR_VER" | cut -d. -f3)
-  PATCH=$((PATCH+1))
-  NEW_VER="$MAJOR.$MINOR.$PATCH"
-else
-  NEW_VER="0.1.0"
-fi
+DATE=$(date -u +"%Y-%m-%d")
+GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
 
-echo "$NEW_VER" > "$VERSION_FILE"
-done_ "Version bumped: $CUR_VER → $NEW_VER"
-
-# --- Create folder structure ---
+###############################
+# 🧱 Create Directory Structure
+###############################
+echo "[+] Creating directories..."
 mkdir -p tectum_framework/api_server
 mkdir -p tectum_framework/ollama
 mkdir -p tectum_framework/agents/scraper
 mkdir -p tectum_framework/agents/inserter
+mkdir -p assets
 
-# --- Create default main.py for agents ---
-for agent in scraper inserter; do
-  AGENT_PATH="tectum_framework/agents/$agent/main.py"
-  if [ ! -f "$AGENT_PATH" ]; then
-    cat <<EOF > "$AGENT_PATH"
-print("[$agent agent] running...")
-EOF
-    done_ "Created placeholder: $AGENT_PATH"
-  fi
-done
+###############################
+# 📄 Generate Core Files
+###############################
 
-# --- Dockerfiles ---
-cat <<EOF > tectum_framework/api_server/Dockerfile
-FROM python:3.11-slim
+echo "[+] Writing Dockerfiles and app stubs..."
+
+# API Server Dockerfile
+cat > tectum_framework/api_server/Dockerfile <<EOF
+FROM python:3.11
 WORKDIR /app
 COPY . .
-RUN pip install fastapi uvicorn psycopg2-binary sqlalchemy
+RUN pip install fastapi uvicorn psycopg2-binary
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 EOF
 
-cat <<EOF > tectum_framework/ollama/Dockerfile
-FROM ollama/ollama:latest
-VOLUME /root/.ollama
-EXPOSE 11434
+# API Server Main App
+cat > tectum_framework/api_server/main.py <<EOF
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"message": "Cloven Tectum API is live."}
 EOF
 
-for agent in scraper inserter; do
-cat <<EOF > tectum_framework/agents/$agent/Dockerfile
-FROM python:3.11-slim
+# Ollama Dockerfile
+cat > tectum_framework/ollama/Dockerfile <<EOF
+FROM ollama/ollama:latest
+ENV OLLAMA_HOST=0.0.0.0:11434
+EXPOSE 11434
+CMD ["serve"]
+EOF
+
+# Scraper Dockerfile
+cat > tectum_framework/agents/scraper/Dockerfile <<EOF
+FROM python:3.11
 WORKDIR /app
 COPY . .
+RUN pip install requests
 CMD ["python", "main.py"]
 EOF
-done
 
-# --- .env file ---
-if [ ! -f .env ]; then
-cat <<EOF > .env
-DATABASE_USER=cloven
-DATABASE_PASS=tectum123
-DATABASE_NAME=cloven_tectum
-DATABASE_PORT=5432
-API_PORT=8000
-OLLAMA_PORT=11434
-WEBUI_PORT=8080
+# Scraper main.py
+cat > tectum_framework/agents/scraper/main.py <<EOF
+print("[Scraper] Agent starting... (stub)")
 EOF
-  done_ "Created default .env"
-fi
 
-# --- docker-compose.yml ---
-cat <<EOF > docker-compose.yml
+# Inserter Dockerfile
+cat > tectum_framework/agents/inserter/Dockerfile <<EOF
+FROM python:3.11
+WORKDIR /app
+COPY . .
+RUN pip install psycopg2-binary
+CMD ["python", "main.py"]
+EOF
+
+# Inserter main.py
+cat > tectum_framework/agents/inserter/main.py <<EOF
+print("[Inserter] Agent starting... (stub)")
+EOF
+
+###############################
+# 🐳 Compose File
+###############################
+echo "[+] Writing docker-compose.yml..."
+cat > docker-compose.yml <<EOF
+version: '3.9'
 services:
-  cloven_tectum_db:
-    image: ankane/pgvector:latest
-    container_name: cloven_tectum_db
-    restart: always
-    environment:
-      POSTGRES_USER: \${DATABASE_USER}
-      POSTGRES_PASSWORD: \${DATABASE_PASS}
-      POSTGRES_DB: \${DATABASE_NAME}
-    ports:
-      - "\${DATABASE_PORT}:5432"
-    volumes:
-      - cloven_db_data:/var/lib/postgresql/data
-
   cloven_tectum_api:
     build: ./tectum_framework/api_server
     container_name: cloven_tectum_api
-    restart: unless-stopped
-    env_file: .env
-    depends_on:
-      - cloven_tectum_db
+    environment:
+      API_PORT: 8000
     ports:
-      - "\${API_PORT}:8000"
+      - "8000:8000"
+    restart: unless-stopped
+
+  cloven_tectum_db:
+    image: ankane/pgvector:latest
+    container_name: cloven_tectum_db
+    environment:
+      POSTGRES_DB: cloven_tectum
+      POSTGRES_USER: cloven
+      POSTGRES_PASSWORD: tectum123
+    ports:
+      - "5432:5432"
     volumes:
-      - ./tectum_framework/api_server:/app
+      - cloven_db_data:/var/lib/postgresql/data
+    restart: always
 
   cloven_tectum_ollama:
     build: ./tectum_framework/ollama
     container_name: cloven_tectum_ollama
-    restart: always
     ports:
-      - "\${OLLAMA_PORT}:11434"
+      - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
+    restart: always
 
   cloven_tectum_webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: cloven_tectum_webui
-    restart: always
     depends_on:
       - cloven_tectum_ollama
     environment:
-      - OLLAMA_HOST=http://cloven_tectum_ollama:11434
+      OLLAMA_HOST: http://cloven_tectum_ollama:11434
     ports:
-      - "\${WEBUI_PORT}:8080"
+      - "8080:8080"
     volumes:
       - open-webui-data:/app/backend/data
+    restart: always
 
   cloven_tectum_scraper:
     build: ./tectum_framework/agents/scraper
     container_name: cloven_tectum_scraper
-    restart: on-failure
-    env_file: .env
     depends_on:
       - cloven_tectum_api
+    restart: on-failure
 
   cloven_tectum_inserter:
     build: ./tectum_framework/agents/inserter
     container_name: cloven_tectum_inserter
-    restart: on-failure
-    env_file: .env
     depends_on:
       - cloven_tectum_api
+    restart: on-failure
 
 volumes:
   cloven_db_data:
@@ -166,20 +166,23 @@ volumes:
   open-webui-data:
 EOF
 
-done_ "Writing docker-compose.yml..."
+###############################
+# 📝 Auto-generate Docs
+###############################
+echo "[+] Updating README.md and ABOUT.md..."
 
-# --- Inject version & metadata into markdowns ---
-GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-BUILD_DATE=$(date +%F)
+sed -e "s/{{VERSION}}/$NEW_VERSION/" \
+    -e "s/{{DATE}}/$DATE/" \
+    -e "s/{{GIT_HASH}}/$GIT_HASH/" \
+    "$README_TEMPLATE" > README.md
 
-sed "s/{{VERSION}}/$NEW_VER/g; s/{{GIT_HASH}}/$GIT_HASH/g; s/{{DATE}}/$BUILD_DATE/g" README.template.md > README.md
-sed "s/{{VERSION}}/$NEW_VER/g; s/{{GIT_HASH}}/$GIT_HASH/g; s/{{DATE}}/$BUILD_DATE/g" ABOUT.template.md > ABOUT.md
-done_ "Updating README.md and ABOUT.md..."
+sed -e "s/{{VERSION}}/$NEW_VERSION/" \
+    -e "s/{{DATE}}/$DATE/" \
+    -e "s/{{GIT_HASH}}/$GIT_HASH/" \
+    "$ABOUT_TEMPLATE" > ABOUT.md
 
-# --- Compose up ---
-if ! $DRY_RUN; then
-  docker compose up -d --build
-  done_ "Starting containers..."
-else
-  warn "Dry-run mode: Skipped starting containers"
-fi
+###############################
+# 🚀 Deploy Services
+###############################
+echo "[✓] Starting containers..."
+docker compose up -d --build
