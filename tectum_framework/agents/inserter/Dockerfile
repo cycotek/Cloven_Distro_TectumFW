@@ -1,5 +1,5 @@
-FROM python:3.11
+FROM python:3.11-slim
 WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-CMD ["python3", "inserter.py"]
+COPY . /app
+RUN pip install --no-cache-dir sqlalchemy[asyncio] asyncpg
+CMD ["python","insert_nodes.py"]

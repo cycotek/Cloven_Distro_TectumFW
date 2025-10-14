@@ -1,82 +1,47 @@
 services:
-  cloven_tectum_api:
-    build:
-      context: ./tectum_framework/api_server
-    container_name: cloven_tectum_api
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
-    environment:
-      API_PORT: "8000"
-      DATABASE_NAME: cloven_tectum
-      DATABASE_PASS: tectum123
-      DATABASE_PORT: "5432"
-      DATABASE_USER: cloven
-      OLLAMA_PORT: "11434"
-      WEBUI_PORT: "8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    depends_on:
-      cloven_tectum_db:
-        condition: service_started
-
   cloven_tectum_db:
     image: ankane/pgvector:latest
     container_name: cloven_tectum_db
     restart: always
     environment:
-      POSTGRES_DB: cloven_tectum
-      POSTGRES_USER: cloven
-      POSTGRES_PASSWORD: tectum123
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASS}
+      POSTGRES_DB: ${DATABASE_NAME}
     ports:
-      - "5432:5432"
+      - "${DATABASE_PORT}:5432"
     volumes:
       - cloven_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  cloven_tectum_inserter:
-    build:
-      context: ./tectum_framework/agents/inserter
-    container_name: cloven_tectum_inserter
-    restart: on-failure
+  cloven_tectum_api:
+    build: ./tectum_framework/api_server
+    container_name: cloven_tectum_api
+    restart: unless-stopped
+    env_file:
+      - .env
     depends_on:
-      cloven_tectum_api:
+      cloven_tectum_db:
         condition: service_started
-    environment:
-      API_PORT: "8000"
-      DATABASE_NAME: cloven_tectum
-      DATABASE_PASS: tectum123
-      DATABASE_PORT: "5432"
-      DATABASE_USER: cloven
-      OLLAMA_PORT: "11434"
-      WEBUI_PORT: "8080"
-
-  cloven_tectum_scraper:
-    build:
-      context: ./tectum_framework/agents/scraper
-    container_name: cloven_tectum_scraper
-    restart: on-failure
-    depends_on:
-      cloven_tectum_api:
-        condition: service_started
-    environment:
-      API_PORT: "8000"
-      DATABASE_NAME: cloven_tectum
-      DATABASE_PASS: tectum123
-      DATABASE_PORT: "5432"
-      DATABASE_USER: cloven
-      OLLAMA_PORT: "11434"
-      WEBUI_PORT: "8080"
+    ports:
+      - "${API_PORT}:8000"
+    volumes:
+      - ./tectum_framework/api_server:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   cloven_tectum_ollama:
-    build:
-      context: ./tectum_framework/ollama
+    build: ./tectum_framework/ollama
     container_name: cloven_tectum_ollama
     restart: always
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT}:11434"
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
     volumes:
@@ -86,15 +51,35 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: cloven_tectum_webui
     restart: always
-    ports:
-      - "8080:8080"
     depends_on:
       cloven_tectum_ollama:
         condition: service_started
     environment:
-      OLLAMA_HOST: http://cloven_tectum_ollama:11434
+      - OLLAMA_HOST=http://cloven_tectum_ollama:11434
+    ports:
+      - "${WEBUI_PORT}:8080"
     volumes:
       - open-webui-data:/app/backend/data
+
+  cloven_tectum_scraper:
+    build: ./tectum_framework/agents/scraper
+    container_name: cloven_tectum_scraper
+    restart: on-failure
+    env_file:
+      - .env
+    depends_on:
+      cloven_tectum_api:
+        condition: service_started
+
+  cloven_tectum_inserter:
+    build: ./tectum_framework/agents/inserter
+    container_name: cloven_tectum_inserter
+    restart: on-failure
+    env_file:
+      - .env
+    depends_on:
+      cloven_tectum_api:
+        condition: service_started
 
 volumes:
   cloven_db_data:

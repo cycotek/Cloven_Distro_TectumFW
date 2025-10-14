@@ -1,5 +1,5 @@
-FROM python:3.11
+FROM python:3.11-slim
 WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-CMD ["python3", "scraper.py"]
+COPY . /app
+RUN pip install --no-cache-dir requests aiohttp beautifulsoup4
+CMD ["python","scraper.py"]
