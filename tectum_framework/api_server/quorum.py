@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 from typing import List
 
@@ -56,17 +57,37 @@ async def _query_model(client: httpx.AsyncClient, model: str, question: str) -> 
     return {"model": model, **result}
 
 
+def _parse_r1(raw: str) -> tuple[str, str]:
+    """
+    Split a DeepSeek-R1 response into (thinking, answer).
+
+    R1 wraps its chain-of-thought in <think>...</think> before the final answer.
+    For any other model the thinking will be empty and the full text is the answer.
+    """
+    match = re.search(r"<think>(.*?)</think>(.*)", raw, re.DOTALL)
+    if match:
+        thinking = match.group(1).strip()
+        answer = match.group(2).strip()
+    else:
+        thinking = ""
+        answer = raw.strip()
+    return thinking, answer
+
+
 async def run_quorum(question: str, models: List[str]) -> dict:
     """
-    Fan the question out to all models in parallel, then synthesize.
+    Fan the question out to all models in parallel, then synthesize with the
+    designated synthesis model (ideally DeepSeek-R1 for auditable reasoning).
 
     Returns:
         {
             "responses": [
-                {"model": str, "content": str, "duration_ms": int, "tokens_in": int, "tokens_out": int},
+                {"model": str, "content": str, "duration_ms": int,
+                 "tokens_in": int, "tokens_out": int},
                 ...
             ],
-            "narrative": str,
+            "narrative": str,           # final answer only
+            "synthesis_thinking": str,  # R1 chain-of-thought (empty for other models)
             "synthesis_duration_ms": int,
             "synthesis_tokens_in": int,
             "synthesis_tokens_out": int,
@@ -78,7 +99,7 @@ async def run_quorum(question: str, models: List[str]) -> dict:
             *[_query_model(client, m, question) for m in models]
         )
 
-        # Build synthesis prompt from all responses
+        # Build synthesis prompt
         responses_block = "\n\n".join(
             f"=== {r['model']} ===\n{r['content']}" for r in responses
         )
@@ -91,12 +112,13 @@ async def run_quorum(question: str, models: List[str]) -> dict:
         )
 
         try:
-            synth = await _chat(client, SYNTHESIS_MODEL, synthesis_prompt, timeout=180)
-            narrative = synth["content"]
+            synth = await _chat(client, SYNTHESIS_MODEL, synthesis_prompt, timeout=240)
+            thinking, narrative = _parse_r1(synth["content"])
             synthesis_duration_ms = synth["duration_ms"]
             synthesis_tokens_in = synth["tokens_in"]
             synthesis_tokens_out = synth["tokens_out"]
         except Exception as exc:
+            thinking = ""
             narrative = f"[synthesis error: {exc}]"
             synthesis_duration_ms = 0
             synthesis_tokens_in = 0
@@ -105,6 +127,7 @@ async def run_quorum(question: str, models: List[str]) -> dict:
     return {
         "responses": responses,
         "narrative": narrative,
+        "synthesis_thinking": thinking,
         "synthesis_duration_ms": synthesis_duration_ms,
         "synthesis_tokens_in": synthesis_tokens_in,
         "synthesis_tokens_out": synthesis_tokens_out,

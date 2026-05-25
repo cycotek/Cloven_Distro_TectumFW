@@ -71,9 +71,10 @@ def _run_quorum_bg(job_id: str, question: str, models: List[str]) -> None:
                 )
             cur.execute(
                 """INSERT INTO quorum_narratives
-                   (job_id, synthesis_model, narrative, duration_ms, tokens_in, tokens_out)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                   (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                 (job_id, SYNTHESIS_MODEL, result["narrative"],
+                 result.get("synthesis_thinking", ""),
                  result.get("synthesis_duration_ms"),
                  result.get("synthesis_tokens_in"),
                  result.get("synthesis_tokens_out")),
@@ -181,9 +182,10 @@ async def submit_quorum_sync(req: QuorumRequest):
             )
         cur.execute(
             """INSERT INTO quorum_narratives
-               (job_id, synthesis_model, narrative, duration_ms, tokens_in, tokens_out)
-               VALUES (%s,%s,%s,%s,%s,%s)""",
+               (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
             (job_id, SYNTHESIS_MODEL, result["narrative"],
+             result.get("synthesis_thinking", ""),
              result.get("synthesis_duration_ms"),
              result.get("synthesis_tokens_in"),
              result.get("synthesis_tokens_out")),
@@ -198,6 +200,7 @@ async def submit_quorum_sync(req: QuorumRequest):
         "models": models,
         "responses": result["responses"],
         "narrative": result["narrative"],
+        "synthesis_thinking": result.get("synthesis_thinking", ""),
         "synthesis_duration_ms": result.get("synthesis_duration_ms"),
         "synthesis_tokens_in": result.get("synthesis_tokens_in"),
         "synthesis_tokens_out": result.get("synthesis_tokens_out"),
@@ -231,7 +234,7 @@ def get_quorum(job_id: str):
         ]
 
         cur.execute(
-            """SELECT narrative, synthesis_model, duration_ms, tokens_in, tokens_out, created_at
+            """SELECT narrative, thinking, synthesis_model, duration_ms, tokens_in, tokens_out, created_at
                FROM quorum_narratives WHERE job_id=%s""",
             (job_id,),
         )
@@ -246,10 +249,11 @@ def get_quorum(job_id: str):
         "created_at": str(created_at),
         "responses": responses,
         "narrative": nar[0] if nar else None,
-        "synthesis_model": nar[1] if nar else None,
-        "synthesis_duration_ms": nar[2] if nar else None,
-        "synthesis_tokens_in": nar[3] if nar else None,
-        "synthesis_tokens_out": nar[4] if nar else None,
+        "synthesis_thinking": nar[1] if nar else "",
+        "synthesis_model": nar[2] if nar else None,
+        "synthesis_duration_ms": nar[3] if nar else None,
+        "synthesis_tokens_in": nar[4] if nar else None,
+        "synthesis_tokens_out": nar[5] if nar else None,
     }
 
 

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS quorum_narratives (
     job_id UUID REFERENCES quorum_jobs(id) ON DELETE CASCADE,
     synthesis_model VARCHAR(100),
     narrative TEXT,
+    thinking TEXT,
     duration_ms INTEGER,
     tokens_in INTEGER,
     tokens_out INTEGER,
