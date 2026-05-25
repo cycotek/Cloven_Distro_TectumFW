@@ -1,8 +1,8 @@
 # Cloven Distro — TectumFW
 
-**A self-hosted, multi-model AI reasoning framework** — routes questions through a 3-tier intelligence pipeline: semantic memory cache → direct fast-path → full quorum synthesis.
+**TectumFW** is a self-hosted reasoning layer for your local network. Ask it a question and three AI models independently answer it — a fourth reads them all and synthesizes a bias-filtered consensus. Answers are remembered semantically, so anything asked twice — even phrased differently — comes back instantly from cache. One command to deploy, nothing leaves your network, and any LLM or agent on your network can call it as a tool.
 
-Built for local inference via Ollama. No cloud APIs. No data leaving your network.
+Beginner-friendly if you have **Docker** and **Python 3.11+** already installed — everything else comes up automatically.
 
 ---
 
