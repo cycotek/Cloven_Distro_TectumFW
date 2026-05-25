@@ -306,8 +306,15 @@ async def submit_quorum_sync(req: QuorumRequest):
     needs_quorum     = packet.get("needs_quorum", True)
     memory_ttl_days  = packet.get("memory_ttl_days", 7)
 
-    log.info("classify: question=%r intent=%s needs_quorum=%s ttl=%d",
-             req.question[:60], intent, needs_quorum, memory_ttl_days)
+    # News queries always need live context — auto-enable fetch regardless of
+    # whether the user toggled Research Mode.  Model training data is frozen;
+    # for anything time-sensitive we must get current information.
+    auto_fetch = (intent == "news") and not req.enable_fetch
+    if auto_fetch:
+        log.info("Auto-fetch: news intent detected for %r", req.question[:60])
+
+    log.info("classify: question=%r intent=%s needs_quorum=%s ttl=%d auto_fetch=%s",
+             req.question[:60], intent, needs_quorum, memory_ttl_days, auto_fetch)
 
     # ── Step 2: Memory check (skip for ephemeral intents) ─────────────────────
     memory_hit = None
@@ -416,7 +423,7 @@ async def submit_quorum_sync(req: QuorumRequest):
     fetch_context       = ""
     fetch_sources_count = 0
 
-    if req.enable_fetch:
+    if req.enable_fetch or auto_fetch:
         fetch_job_id, fetch_context = await _fetch_context_for_question(
             req.question, req.fetch_mode
         )
