@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cloven Tectum</title>
+<style>
+/* ── Theme variables ─────────────────────────────────────────────────────── */
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #1c2128;
+  --border:    #30363d;
+  --text:      #e6edf3;
+  --text-muted:#7d8590;
+  --accent:    #7c6af7;
+  --accent-dim:#2d2a5e;
+  --green:     #3fb950;
+  --red:       #f85149;
+  --yellow:    #d29922;
+  --font:      -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+[data-theme="light"] {
+  --bg:        #f6f8fa;
+  --surface:   #ffffff;
+  --surface2:  #f0f0f0;
+  --border:    #d0d7de;
+  --text:      #1f2328;
+  --text-muted:#57606a;
+  --accent:    #6e57e0;
+  --accent-dim:#e8e4ff;
+  --green:     #1a7f37;
+  --red:       #cf222e;
+  --yellow:    #9a6700;
+}
+[data-theme="terminal"] {
+  --bg:        #000000;
+  --surface:   #001200;
+  --surface2:  #001a00;
+  --border:    #004400;
+  --text:      #00ff41;
+  --text-muted:#007a20;
+  --accent:    #00ff41;
+  --accent-dim:#001a00;
+  --green:     #00ff41;
+  --red:       #ff0000;
+  --yellow:    #ffff00;
+  --font:      var(--mono);
+}
+
+/* ── Reset & base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
+a { color: var(--accent); text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+textarea, input { font-family: inherit; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.app { display: grid; grid-template-rows: 48px 1fr; grid-template-columns: 280px 1fr; height: 100vh; overflow: hidden; }
+.topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); z-index: 10; }
+.sidebar { grid-row: 2; overflow-y: auto; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.main { grid-row: 2; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Topbar ──────────────────────────────────────────────────────────────── */
+.logo { font-weight: 700; font-size: 15px; letter-spacing: 0.5px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.logo-icon { width: 24px; height: 24px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: 900; }
+[data-theme="terminal"] .logo-icon { color: var(--bg); }
+.logo-sub { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+.spacer { flex: 1; }
+.theme-btns { display: flex; gap: 4px; }
+.theme-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 12px; transition: all 0.15s; }
+.theme-btn:hover, .theme-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+.health-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; }
+.health-dot.ok { background: var(--green); }
+.health-dot.err { background: var(--red); }
+.health-label { font-size: 12px; color: var(--text-muted); }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar-hdr { padding: 12px 14px 8px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid var(--border); }
+.history-list { flex: 1; overflow-y: auto; }
+.history-item { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+.history-item:hover, .history-item.active { background: var(--surface2); }
+.history-q { font-size: 12px; color: var(--text); line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.history-meta { margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+.history-time { font-size: 11px; color: var(--text-muted); }
+.status-pill { font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+.status-complete { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
+.status-running, .status-pending { background: color-mix(in srgb, var(--yellow) 15%, transparent); color: var(--yellow); }
+.status-error { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
+.sidebar-empty { padding: 20px 14px; color: var(--text-muted); font-size: 12px; text-align: center; }
+
+/* ── Question panel ──────────────────────────────────────────────────────── */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.panel-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 12px; }
+.question-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 14px; resize: vertical; min-height: 80px; transition: border-color 0.2s; outline: none; }
+.question-input:focus { border-color: var(--accent); }
+.question-input::placeholder { color: var(--text-muted); }
+.model-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+.model-chip { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface2); cursor: pointer; transition: all 0.15s; user-select: none; }
+.model-chip input { display: none; }
+.model-chip.checked { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
+.model-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+.model-chip.checked .dot { background: var(--accent); }
+.model-chip span { font-size: 12px; color: var(--text-muted); }
+.model-chip.checked span { color: var(--text); }
+.submit-row { display: flex; gap: 10px; margin-top: 14px; align-items: center; }
+.btn { padding: 8px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; transition: all 0.15s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+[data-theme="terminal"] .btn-primary { color: var(--bg); }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+.btn-ghost:hover { border-color: var(--text-muted); color: var(--text); }
+.submit-hint { font-size: 12px; color: var(--text-muted); }
+
+/* ── Job status bar ──────────────────────────────────────────────────────── */
+.status-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.status-bar-text { color: var(--text-muted); }
+.status-bar-text strong { color: var(--text); }
+
+/* ── Response cards ──────────────────────────────────────────────────────── */
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.model-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+.card-header { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; background: var(--surface2); }
+.card-model-name { font-weight: 600; font-size: 13px; flex: 1; }
+.card-stats { display: flex; gap: 10px; }
+.stat { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 3px; }
+.stat-val { color: var(--text); font-weight: 600; }
+.card-body { padding: 12px 14px; font-size: 13px; line-height: 1.6; color: var(--text); flex: 1; overflow-y: auto; max-height: 340px; white-space: pre-wrap; word-break: break-word; }
+.card-body.error { color: var(--red); font-family: var(--mono); font-size: 12px; }
+[data-theme="terminal"] .card-body { font-family: var(--mono); font-size: 12px; }
+
+/* ── Narrative panel ─────────────────────────────────────────────────────── */
+.narrative-panel { background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; overflow: hidden; }
+.narrative-header { padding: 10px 14px; background: var(--accent-dim); border-bottom: 1px solid var(--accent); display: flex; align-items: center; gap: 10px; }
+.narrative-title { font-weight: 700; font-size: 13px; flex: 1; color: var(--text); }
+.narrative-body { padding: 14px 16px; font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+[data-theme="terminal"] .narrative-body { font-family: var(--mono); font-size: 12px; }
+
+/* ── Empty / placeholder ─────────────────────────────────────────────────── */
+.placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-muted); text-align: center; }
+.placeholder-icon { font-size: 40px; opacity: 0.3; }
+.placeholder-text { font-size: 13px; max-width: 300px; line-height: 1.5; }
+
+/* ── Misc ────────────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+.section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="logo">
+      <div class="logo-icon">CT</div>
+      <div>
+        <div>Cloven Tectum</div>
+        <div class="logo-sub">Quorum Intelligence</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="theme-btns">
+      <button class="theme-btn active" onclick="setTheme('dark')" id="btn-dark">Dark</button>
+      <button class="theme-btn" onclick="setTheme('light')" id="btn-light">Light</button>
+      <button class="theme-btn" onclick="setTheme('terminal')" id="btn-terminal">Terminal</button>
+    </div>
+    <div class="health-dot" id="health-dot"></div>
+    <span class="health-label" id="health-label">connecting...</span>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-hdr">Job History</div>
+    <div class="history-list" id="history-list">
+      <div class="sidebar-empty">No jobs yet</div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main" id="main">
+
+    <!-- Question input panel -->
+    <div class="panel">
+      <div class="panel-title">New Quorum</div>
+      <textarea class="question-input" id="question" placeholder="Ask a question, paste a log, describe an error…" rows="4"></textarea>
+      <div class="model-row" id="model-row">
+        <span class="section-label" style="margin:0">Models:</span>
+        <!-- populated by JS -->
+      </div>
+      <div class="submit-row">
+        <button class="btn btn-primary" id="submit-btn" onclick="submitQuorum()">Run Quorum</button>
+        <button class="btn btn-ghost" onclick="clearResults()">Clear</button>
+        <span class="submit-hint" id="submit-hint"></span>
+      </div>
+    </div>
+
+    <!-- Status bar (shown while running) -->
+    <div class="status-bar hidden" id="status-bar">
+      <div class="spinner"></div>
+      <div class="status-bar-text" id="status-text">Running quorum...</div>
+    </div>
+
+    <!-- Results placeholder -->
+    <div class="placeholder" id="placeholder">
+      <div class="placeholder-icon">⬡</div>
+      <div class="placeholder-text">Submit a question to fan out across all selected models and receive a synthesized narrative.</div>
+    </div>
+
+    <!-- Model response cards -->
+    <div id="results-section" class="hidden">
+      <div class="section-label">Model Responses</div>
+      <div class="cards-grid" id="cards-grid"></div>
+
+      <!-- Narrative -->
+      <div style="margin-top:16px">
+        <div class="section-label">Synthesis</div>
+        <div class="narrative-panel" id="narrative-panel">
+          <div class="narrative-header">
+            <span class="narrative-title" id="narrative-model-label">Synthesis</span>
+            <div class="card-stats" id="narrative-stats"></div>
+          </div>
+          <div class="narrative-body" id="narrative-body">—</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let availableModels = [];
+let pollTimer = null;
+let currentJobId = null;
+
+// ── Theme ──────────────────────────────────────────────────────────────────
+function setTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('tectum-theme', t);
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + t).classList.add('active');
+}
+(function() {
+  const saved = localStorage.getItem('tectum-theme') || 'dark';
+  setTheme(saved);
+})();
+
+// ── Health check ───────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch('/health');
+    const ok = r.ok;
+    document.getElementById('health-dot').className = 'health-dot ' + (ok ? 'ok' : 'err');
+    document.getElementById('health-label').textContent = ok ? 'online' : 'error';
+  } catch {
+    document.getElementById('health-dot').className = 'health-dot err';
+    document.getElementById('health-label').textContent = 'offline';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 30000);
+
+// ── Load available models ──────────────────────────────────────────────────
+async function loadModels() {
+  try {
+    const r = await fetch('/models');
+    const data = await r.json();
+    availableModels = (data.models || []).map(m => m.name);
+    renderModelChips();
+  } catch {
+    document.getElementById('model-row').innerHTML +=
+      '<span style="color:var(--red);font-size:12px">Could not reach Ollama</span>';
+  }
+}
+
+function renderModelChips() {
+  const row = document.getElementById('model-row');
+  // clear existing chips
+  row.querySelectorAll('.model-chip').forEach(c => c.remove());
+  availableModels.forEach(m => {
+    const chip = document.createElement('label');
+    chip.className = 'model-chip checked';
+    chip.innerHTML = `<input type="checkbox" value="${m}" checked><div class="dot"></div><span>${m}</span>`;
+    chip.querySelector('input').addEventListener('change', function() {
+      chip.classList.toggle('checked', this.checked);
+    });
+    row.appendChild(chip);
+  });
+}
+loadModels();
+
+function selectedModels() {
+  return [...document.querySelectorAll('#model-row input:checked')].map(i => i.value);
+}
+
+// ── History ────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const r = await fetch('/quorum/history?limit=50');
+    const jobs = await r.json();
+    renderHistory(jobs);
+  } catch { /* silently skip */ }
+}
+
+function renderHistory(jobs) {
+  const list = document.getElementById('history-list');
+  if (!jobs.length) {
+    list.innerHTML = '<div class="sidebar-empty">No jobs yet</div>';
+    return;
+  }
+  list.innerHTML = jobs.map(j => {
+    const d = new Date(j.created_at);
+    const ago = timeAgo(d);
+    const statusClass = 'status-' + j.status;
+    const q = escapeHtml(j.question.length > 80 ? j.question.slice(0, 80) + '…' : j.question);
+    return `<div class="history-item${j.job_id === currentJobId ? ' active' : ''}"
+                 onclick="loadJob('${j.job_id}')">
+              <div class="history-q">${q}</div>
+              <div class="history-meta">
+                <span class="history-time">${ago}</span>
+                <span class="status-pill ${statusClass}">${j.status}</span>
+              </div>
+            </div>`;
+  }).join('');
+}
+
+function timeAgo(date) {
+  const secs = Math.floor((Date.now() - date) / 1000);
+  if (secs < 60) return 'just now';
+  if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+  if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+  return Math.floor(secs / 86400) + 'd ago';
+}
+
+loadHistory();
+setInterval(loadHistory, 15000);
+
+// ── Submit quorum ──────────────────────────────────────────────────────────
+async function submitQuorum() {
+  const q = document.getElementById('question').value.trim();
+  if (!q) { flashHint('Enter a question first'); return; }
+  const models = selectedModels();
+  if (!models.length) { flashHint('Select at least one model'); return; }
+
+  clearResults();
+  setLoading(true);
+  currentJobId = null;
+
+  try {
+    const r = await fetch('/quorum', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, models }),
+    });
+    const data = await r.json();
+    currentJobId = data.job_id;
+    setStatusText(`Job <strong>${currentJobId.slice(0, 8)}</strong> — polling for results…`);
+    pollJob(currentJobId);
+    loadHistory();
+  } catch (e) {
+    setLoading(false);
+    flashHint('Submit failed: ' + e.message);
+  }
+}
+
+function pollJob(jobId) {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/quorum/' + jobId);
+      const data = await r.json();
+      if (data.status === 'complete') {
+        clearInterval(pollTimer);
+        setLoading(false);
+        renderResults(data);
+        loadHistory();
+      } else if (data.status === 'error') {
+        clearInterval(pollTimer);
+        setLoading(false);
+        flashHint('Job failed on server');
+      } else {
+        setStatusText(`Job <strong>${jobId.slice(0, 8)}</strong> — ${data.status}…`);
+      }
+    } catch { /* retry next tick */ }
+  }, 2000);
+}
+
+async function loadJob(jobId) {
+  clearResults();
+  currentJobId = jobId;
+  const r = await fetch('/quorum/' + jobId);
+  const data = await r.json();
+  document.getElementById('question').value = data.question || '';
+  if (data.status === 'complete') {
+    renderResults(data);
+  } else if (data.status === 'running' || data.status === 'pending') {
+    setLoading(true);
+    setStatusText(`Job <strong>${jobId.slice(0, 8)}</strong> — ${data.status}…`);
+    pollJob(jobId);
+  }
+  loadHistory();
+}
+
+// ── Render results ─────────────────────────────────────────────────────────
+function renderResults(data) {
+  document.getElementById('placeholder').classList.add('hidden');
+  document.getElementById('results-section').classList.remove('hidden');
+
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = '';
+
+  (data.responses || []).forEach(r => {
+    const isError = r.content && r.content.startsWith('[error');
+    const card = document.createElement('div');
+    card.className = 'model-card';
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="card-model-name">${escapeHtml(r.model)}</span>
+        <div class="card-stats">
+          ${r.duration_ms ? `<span class="stat">⏱ <span class="stat-val">${(r.duration_ms/1000).toFixed(1)}s</span></span>` : ''}
+          ${r.tokens_out ? `<span class="stat">▲ <span class="stat-val">${r.tokens_out}</span> tok</span>` : ''}
+        </div>
+      </div>
+      <div class="card-body${isError ? ' error' : ''}">${escapeHtml(r.content || '—')}</div>
+    `;
+    grid.appendChild(card);
+  });
+
+  // Narrative
+  document.getElementById('narrative-model-label').textContent =
+    '✦ ' + (data.synthesis_model || 'Synthesis');
+  document.getElementById('narrative-body').textContent = data.narrative || '—';
+
+  const nsStats = document.getElementById('narrative-stats');
+  nsStats.innerHTML = [
+    data.synthesis_duration_ms ? `<span class="stat">⏱ <span class="stat-val">${(data.synthesis_duration_ms/1000).toFixed(1)}s</span></span>` : '',
+    data.synthesis_tokens_out ? `<span class="stat">▲ <span class="stat-val">${data.synthesis_tokens_out}</span> tok</span>` : '',
+  ].filter(Boolean).join('');
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function setLoading(on) {
+  document.getElementById('submit-btn').disabled = on;
+  document.getElementById('status-bar').classList.toggle('hidden', !on);
+  if (!on) document.getElementById('status-text').textContent = '';
+}
+
+function setStatusText(html) {
+  document.getElementById('status-text').innerHTML = html;
+}
+
+function flashHint(msg) {
+  const h = document.getElementById('submit-hint');
+  h.textContent = msg;
+  h.style.color = 'var(--red)';
+  setTimeout(() => { h.textContent = ''; }, 4000);
+}
+
+function clearResults() {
+  document.getElementById('results-section').classList.add('hidden');
+  document.getElementById('placeholder').classList.remove('hidden');
+  document.getElementById('cards-grid').innerHTML = '';
+  document.getElementById('narrative-body').textContent = '—';
+  document.getElementById('narrative-stats').innerHTML = '';
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  setLoading(false);
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Ctrl+Enter to submit
+document.getElementById('question').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitQuorum();
+});
+</script>
+</body>
+</html>

@@ -4,11 +4,13 @@ import asyncio
 import os
 import uuid
 from contextlib import contextmanager
+from pathlib import Path
 from typing import List, Optional
 
 import httpx
 import psycopg2
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from quorum import DEFAULT_MODELS, OLLAMA_HOST, SYNTHESIS_MODEL, run_quorum
@@ -38,7 +40,9 @@ def get_db():
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Cloven Tectum API", version="0.4.0")
+app = FastAPI(title="Cloven Tectum API", version="0.5.0")
+
+_STATIC = Path(__file__).parent / "static"
 
 
 class QuorumRequest(BaseModel):
@@ -49,7 +53,6 @@ class QuorumRequest(BaseModel):
 # ── Background runner ─────────────────────────────────────────────────────────
 
 def _run_quorum_bg(job_id: str, question: str, models: List[str]) -> None:
-    """Synchronous wrapper for the background task (FastAPI BackgroundTasks is sync-friendly)."""
     with get_db() as conn:
         cur = conn.cursor()
         try:
@@ -60,12 +63,20 @@ def _run_quorum_bg(job_id: str, question: str, models: List[str]) -> None:
 
             for r in result["responses"]:
                 cur.execute(
-                    "INSERT INTO quorum_responses (job_id, model, response) VALUES (%s,%s,%s)",
-                    (job_id, r["model"], r["content"]),
+                    """INSERT INTO quorum_responses
+                       (job_id, model, response, duration_ms, tokens_in, tokens_out)
+                       VALUES (%s,%s,%s,%s,%s,%s)""",
+                    (job_id, r["model"], r["content"],
+                     r.get("duration_ms"), r.get("tokens_in"), r.get("tokens_out")),
                 )
             cur.execute(
-                "INSERT INTO quorum_narratives (job_id, synthesis_model, narrative) VALUES (%s,%s,%s)",
-                (job_id, SYNTHESIS_MODEL, result["narrative"]),
+                """INSERT INTO quorum_narratives
+                   (job_id, synthesis_model, narrative, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (job_id, SYNTHESIS_MODEL, result["narrative"],
+                 result.get("synthesis_duration_ms"),
+                 result.get("synthesis_tokens_in"),
+                 result.get("synthesis_tokens_out")),
             )
             cur.execute("UPDATE quorum_jobs SET status='complete' WHERE id=%s", (job_id,))
             conn.commit()
@@ -79,9 +90,13 @@ def _run_quorum_bg(job_id: str, question: str, models: List[str]) -> None:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.get("/")
-def root():
-    return {"message": "Cloven Tectum online — uptime is truth.", "version": "0.4.0"}
+@app.get("/", response_class=HTMLResponse)
+@app.get("/ui", response_class=HTMLResponse)
+def serve_ui():
+    index = _STATIC / "index.html"
+    if not index.exists():
+        return HTMLResponse("<h1>UI not found</h1>", status_code=404)
+    return HTMLResponse(index.read_text())
 
 
 @app.get("/health")
@@ -95,6 +110,32 @@ async def list_models():
         resp = await client.get(f"{OLLAMA_HOST}/api/tags", timeout=10)
         resp.raise_for_status()
     return resp.json()
+
+
+@app.get("/quorum/history")
+def get_history(limit: int = Query(default=50, le=200)):
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT id, question, models, status, created_at
+               FROM quorum_jobs
+               ORDER BY created_at DESC
+               LIMIT %s""",
+            (limit,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+
+    return [
+        {
+            "job_id": str(r[0]),
+            "question": r[1],
+            "models": r[2],
+            "status": r[3],
+            "created_at": str(r[4]),
+        }
+        for r in rows
+    ]
 
 
 @app.post("/quorum", status_code=202)
@@ -132,12 +173,20 @@ async def submit_quorum_sync(req: QuorumRequest):
 
         for r in result["responses"]:
             cur.execute(
-                "INSERT INTO quorum_responses (job_id, model, response) VALUES (%s,%s,%s)",
-                (job_id, r["model"], r["content"]),
+                """INSERT INTO quorum_responses
+                   (job_id, model, response, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (job_id, r["model"], r["content"],
+                 r.get("duration_ms"), r.get("tokens_in"), r.get("tokens_out")),
             )
         cur.execute(
-            "INSERT INTO quorum_narratives (job_id, synthesis_model, narrative) VALUES (%s,%s,%s)",
-            (job_id, SYNTHESIS_MODEL, result["narrative"]),
+            """INSERT INTO quorum_narratives
+               (job_id, synthesis_model, narrative, duration_ms, tokens_in, tokens_out)
+               VALUES (%s,%s,%s,%s,%s,%s)""",
+            (job_id, SYNTHESIS_MODEL, result["narrative"],
+             result.get("synthesis_duration_ms"),
+             result.get("synthesis_tokens_in"),
+             result.get("synthesis_tokens_out")),
         )
         cur.execute("UPDATE quorum_jobs SET status='complete' WHERE id=%s", (job_id,))
         conn.commit()
@@ -149,6 +198,9 @@ async def submit_quorum_sync(req: QuorumRequest):
         "models": models,
         "responses": result["responses"],
         "narrative": result["narrative"],
+        "synthesis_duration_ms": result.get("synthesis_duration_ms"),
+        "synthesis_tokens_in": result.get("synthesis_tokens_in"),
+        "synthesis_tokens_out": result.get("synthesis_tokens_out"),
     }
 
 
@@ -165,13 +217,22 @@ def get_quorum(job_id: str):
         question, models, status, created_at = row
 
         cur.execute(
-            "SELECT model, response, responded_at FROM quorum_responses WHERE job_id=%s ORDER BY responded_at",
+            """SELECT model, response, duration_ms, tokens_in, tokens_out, responded_at
+               FROM quorum_responses WHERE job_id=%s ORDER BY responded_at""",
             (job_id,),
         )
-        responses = [{"model": r[0], "content": r[1], "at": str(r[2])} for r in cur.fetchall()]
+        responses = [
+            {
+                "model": r[0], "content": r[1],
+                "duration_ms": r[2], "tokens_in": r[3], "tokens_out": r[4],
+                "at": str(r[5]),
+            }
+            for r in cur.fetchall()
+        ]
 
         cur.execute(
-            "SELECT narrative, synthesis_model, created_at FROM quorum_narratives WHERE job_id=%s",
+            """SELECT narrative, synthesis_model, duration_ms, tokens_in, tokens_out, created_at
+               FROM quorum_narratives WHERE job_id=%s""",
             (job_id,),
         )
         nar = cur.fetchone()
@@ -186,4 +247,9 @@ def get_quorum(job_id: str):
         "responses": responses,
         "narrative": nar[0] if nar else None,
         "synthesis_model": nar[1] if nar else None,
+        "synthesis_duration_ms": nar[2] if nar else None,
+        "synthesis_tokens_in": nar[3] if nar else None,
+        "synthesis_tokens_out": nar[4] if nar else None,
     }
+
+
