@@ -93,11 +93,15 @@ JSON schema:
 
 Intent definitions:
   direct    — single-answer factual query: math, constants, definitions, conversions,
-              spelling. These have ONE correct answer with NO bias or debate possible.
-              Examples: "what is 2+2", "speed of light", "how do you spell necessary",
-              "what year did WW2 end". No web fetch needed. Answer from model knowledge.
+              spelling, physical constants. These have ONE correct answer with NO bias
+              or debate possible. IMPORTANT: Physics/science constants are ALWAYS direct,
+              NOT reference. Examples: "what is 2+2", "speed of light in a vacuum",
+              "what is the speed of light", "how fast does light travel", "Planck constant",
+              "boiling point of water", "how do you spell necessary", "what year did WW2 end",
+              "convert 100F to Celsius". No web fetch needed. Answer from model knowledge.
   news      — current events, recent happenings, breaking stories, today/this week
-  reference — historical facts, encyclopedic knowledge, how-things-work, science concepts
+  reference — historical facts, encyclopedic knowledge, how-things-work, opinions,
+              explanations of complex topics, "why" questions, "how does X work"
   logs      — error logs, stack traces, debug output, application errors
   network   — port scans, service discovery, network topology queries
 
@@ -128,6 +132,7 @@ async def optimize(query: str, force_depth: Optional[Depth] = None,
                         {"role": "user",   "content": prompt},
                     ],
                     "stream": False,
+                    "options": {"temperature": 0},   # deterministic — classification must be stable
                 },
                 timeout=30,
             )

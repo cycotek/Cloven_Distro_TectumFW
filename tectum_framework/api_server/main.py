@@ -345,7 +345,7 @@ async def submit_quorum_sync(req: QuorumRequest):
         log.info("Direct path for %r (intent=%s)", req.question[:60], intent)
         job_id = str(uuid.uuid4())
         async with httpx.AsyncClient() as client:
-            direct_result = await _chat(client, DIRECT_MODEL, req.question, timeout=60)
+            direct_result = await _chat(client, DIRECT_MODEL, req.question, timeout=180)
 
         narrative = direct_result["content"]
 
