@@ -18,6 +18,7 @@
   --green:     #3fb950;
   --red:       #f85149;
   --yellow:    #d29922;
+  --teal:      #39d353;
   --font:      -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
@@ -33,6 +34,7 @@
   --green:     #1a7f37;
   --red:       #cf222e;
   --yellow:    #9a6700;
+  --teal:      #0969da;
 }
 [data-theme="terminal"] {
   --bg:        #000000;
@@ -46,6 +48,7 @@
   --green:     #00ff41;
   --red:       #ff0000;
   --yellow:    #ffff00;
+  --teal:      #00ffff;
   --font:      var(--mono);
 }
 
@@ -54,7 +57,7 @@
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
 a { color: var(--accent); text-decoration: none; }
 button { cursor: pointer; font-family: inherit; }
-textarea, input { font-family: inherit; }
+textarea, input, select { font-family: inherit; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -111,8 +114,27 @@ textarea, input { font-family: inherit; }
 .model-chip.checked span { color: var(--text); }
 .synth-select { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; color: var(--text); padding: 5px 28px 5px 12px; font-size: 12px; font-family: inherit; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237d8590'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; transition: border-color 0.15s; outline: none; }
 .synth-select:focus, .synth-select:hover { border-color: var(--accent); }
-.synth-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--accent); border-radius: 20px; background: var(--accent-dim); font-size: 12px; color: var(--text); }
-.synth-badge .synth-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+
+/* ── Research mode row ───────────────────────────────────────────────────── */
+.research-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; transition: border-color 0.2s; }
+.research-row.active { border-color: var(--teal); background: color-mix(in srgb, var(--teal) 8%, var(--surface2)); }
+.research-toggle-wrap { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.toggle-track { width: 36px; height: 20px; border-radius: 10px; background: var(--border); position: relative; transition: background 0.2s; flex-shrink: 0; }
+.toggle-track.on { background: var(--teal); }
+.toggle-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; position: absolute; top: 3px; left: 3px; transition: transform 0.2s; }
+.toggle-track.on .toggle-thumb { transform: translateX(16px); }
+.research-label { font-size: 13px; font-weight: 600; color: var(--text-muted); transition: color 0.2s; }
+.research-row.active .research-label { color: var(--teal); }
+.research-sep { width: 1px; height: 20px; background: var(--border); }
+.research-depth-wrap { display: flex; align-items: center; gap: 6px; }
+.research-depth-label { font-size: 11px; color: var(--text-muted); }
+.depth-btns { display: flex; gap: 4px; }
+.depth-btn { padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 11px; font-weight: 600; transition: all 0.15s; }
+.depth-btn:hover { border-color: var(--text-muted); color: var(--text); }
+.depth-btn.active { border-color: var(--teal); background: color-mix(in srgb, var(--teal) 15%, transparent); color: var(--teal); }
+.research-hint { font-size: 11px; color: var(--text-muted); margin-left: auto; font-style: italic; }
+
+/* ── Submit row ──────────────────────────────────────────────────────────── */
 .submit-row { display: flex; gap: 10px; margin-top: 14px; align-items: center; }
 .btn { padding: 8px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; transition: all 0.15s; }
 .btn-primary { background: var(--accent); color: #fff; }
@@ -125,10 +147,13 @@ textarea, input { font-family: inherit; }
 
 /* ── Job status bar ──────────────────────────────────────────────────────── */
 .status-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+.status-bar.fetch-phase { border-color: var(--teal); background: color-mix(in srgb, var(--teal) 6%, var(--surface)); }
 .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+.spinner.teal { border-top-color: var(--teal); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .status-bar-text { color: var(--text-muted); }
 .status-bar-text strong { color: var(--text); }
+.phase-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: color-mix(in srgb, var(--teal) 20%, transparent); color: var(--teal); letter-spacing: 0.5px; }
 
 /* ── Response cards ──────────────────────────────────────────────────────── */
 .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
@@ -148,6 +173,19 @@ textarea, input { font-family: inherit; }
 .narrative-title { font-weight: 700; font-size: 13px; flex: 1; color: var(--text); }
 .narrative-body { padding: 14px 16px; font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-word; }
 [data-theme="terminal"] .narrative-body { font-family: var(--mono); font-size: 12px; }
+
+/* ── Fetch context panel ─────────────────────────────────────────────────── */
+.fetch-meta-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: color-mix(in srgb, var(--teal) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--teal) 40%, var(--border)); border-radius: 8px; margin-bottom: 10px; }
+.fetch-meta-icon { font-size: 14px; }
+.fetch-meta-text { font-size: 12px; color: var(--text-muted); flex: 1; }
+.fetch-meta-text strong { color: var(--teal); }
+.fetch-context-block { border: 1px solid color-mix(in srgb, var(--teal) 40%, var(--border)); border-radius: 8px; overflow: hidden; }
+.fetch-context-toggle { width: 100%; padding: 8px 14px; background: color-mix(in srgb, var(--teal) 8%, var(--surface2)); border: none; color: var(--text-muted); font-family: inherit; font-size: 12px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: color 0.15s; }
+.fetch-context-toggle:hover { color: var(--text); }
+.fetch-context-toggle .arrow { transition: transform 0.2s; display: inline-block; font-size: 10px; }
+.fetch-context-toggle.open .arrow { transform: rotate(90deg); }
+.fetch-context-content { display: none; padding: 12px 14px; font-size: 11px; font-family: var(--mono); color: var(--text-muted); line-height: 1.6; white-space: pre-wrap; word-break: break-word; background: var(--bg); border-top: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
+.fetch-context-content.open { display: block; }
 
 /* ── Empty / placeholder ─────────────────────────────────────────────────── */
 .placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-muted); text-align: center; }
@@ -206,20 +244,36 @@ textarea, input { font-family: inherit; }
     <div class="panel">
       <div class="panel-title">New Quorum</div>
       <textarea class="question-input" id="question" placeholder="Ask a question, paste a log, describe an error…" rows="4"></textarea>
+
       <div class="model-sections">
         <div>
           <div class="model-section-label">Quorum Contributors</div>
-          <div class="model-chips" id="contributor-chips">
-            <!-- populated by JS -->
-          </div>
+          <div class="model-chips" id="contributor-chips"></div>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
           <div class="model-section-label" style="margin:0">Synthesis Model</div>
-          <select class="synth-select" id="synth-select">
-            <!-- populated by JS -->
-          </select>
+          <select class="synth-select" id="synth-select"></select>
         </div>
       </div>
+
+      <!-- Research mode row -->
+      <div class="research-row" id="research-row">
+        <div class="research-toggle-wrap" onclick="toggleResearch()">
+          <div class="toggle-track" id="research-track"><div class="toggle-thumb"></div></div>
+          <span class="research-label" id="research-label">Research Mode</span>
+        </div>
+        <div class="research-sep"></div>
+        <div class="research-depth-wrap" id="research-depth-wrap">
+          <span class="research-depth-label">Depth:</span>
+          <div class="depth-btns">
+            <button class="depth-btn" onclick="setDepth('quick')" id="depth-quick">Quick</button>
+            <button class="depth-btn active" onclick="setDepth('standard')" id="depth-standard">Standard</button>
+            <button class="depth-btn" onclick="setDepth('deep')" id="depth-deep">Deep</button>
+          </div>
+        </div>
+        <span class="research-hint" id="research-hint">off — query LLMs directly</span>
+      </div>
+
       <div class="submit-row">
         <button class="btn btn-primary" id="submit-btn" onclick="submitQuorum()">Run Quorum</button>
         <button class="btn btn-ghost" onclick="clearResults()">Clear</button>
@@ -229,7 +283,7 @@ textarea, input { font-family: inherit; }
 
     <!-- Status bar (shown while running) -->
     <div class="status-bar hidden" id="status-bar">
-      <div class="spinner"></div>
+      <div class="spinner" id="status-spinner"></div>
       <div class="status-bar-text" id="status-text">Running quorum...</div>
     </div>
 
@@ -245,8 +299,9 @@ textarea, input { font-family: inherit; }
       <div class="cards-grid" id="cards-grid"></div>
 
       <!-- Narrative -->
-      <div style="margin-top:16px">
+      <div style="margin-top:16px" id="synthesis-section">
         <div class="section-label">Synthesis</div>
+        <!-- fetch context + reasoning inserted here by JS -->
         <div class="narrative-panel" id="narrative-panel">
           <div class="narrative-header">
             <span class="narrative-title" id="narrative-model-label">Synthesis</span>
@@ -262,9 +317,18 @@ textarea, input { font-family: inherit; }
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
-let availableModels = [];
-let pollTimer = null;
-let currentJobId = null;
+let availableModels  = [];
+let pollTimer        = null;
+let currentJobId     = null;
+let researchEnabled  = false;
+let currentDepth     = 'standard';
+
+// Depth time hints
+const DEPTH_HINTS = {
+  quick:    'quick (~30s crawl)',
+  standard: 'standard (~2min crawl)',
+  deep:     'deep (~10min crawl)',
+};
 
 // ── Theme ──────────────────────────────────────────────────────────────────
 function setTheme(t) {
@@ -273,10 +337,7 @@ function setTheme(t) {
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('btn-' + t).classList.add('active');
 }
-(function() {
-  const saved = localStorage.getItem('tectum-theme') || 'dark';
-  setTheme(saved);
-})();
+(function() { setTheme(localStorage.getItem('tectum-theme') || 'dark'); })();
 
 // ── Health check ───────────────────────────────────────────────────────────
 async function checkHealth() {
@@ -293,18 +354,41 @@ async function checkHealth() {
 checkHealth();
 setInterval(checkHealth, 30000);
 
-// ── Load models via server-split endpoint ──────────────────────────────────
+// ── Research Mode toggle ───────────────────────────────────────────────────
+function toggleResearch() {
+  researchEnabled = !researchEnabled;
+  const track  = document.getElementById('research-track');
+  const row    = document.getElementById('research-row');
+  const hint   = document.getElementById('research-hint');
+  const label  = document.getElementById('research-label');
+  track.classList.toggle('on', researchEnabled);
+  row.classList.toggle('active', researchEnabled);
+  if (researchEnabled) {
+    hint.textContent = DEPTH_HINTS[currentDepth];
+    label.textContent = 'Research Mode';
+  } else {
+    hint.textContent = 'off — query LLMs directly';
+  }
+}
+
+function setDepth(d) {
+  currentDepth = d;
+  document.querySelectorAll('.depth-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('depth-' + d).classList.add('active');
+  if (researchEnabled) {
+    document.getElementById('research-hint').textContent = DEPTH_HINTS[d];
+  }
+}
+
+// ── Load models ────────────────────────────────────────────────────────────
 let configSynthModel = '';
 
 async function loadModels() {
   try {
-    const res = await fetch('/models/split');
+    const res  = await fetch('/models/split');
     const data = await res.json();
-
-    // Server already removed the synthesis model from contributors — use as-is
     configSynthModel = data.synthesis_model || '';
-    availableModels = data.all_models || [];
-
+    availableModels  = data.all_models || [];
     renderContributorChips(data.contributors || []);
     renderSynthSelect(data.all_models || [], configSynthModel);
   } catch {
@@ -336,16 +420,12 @@ function renderSynthSelect(allModels, currentSynth) {
   sel.innerHTML = '';
   allModels.forEach(m => {
     const opt = document.createElement('option');
-    opt.value = m;
-    opt.textContent = m;
+    opt.value = m; opt.textContent = m;
     if (m === currentSynth) opt.selected = true;
     sel.appendChild(opt);
   });
-  // When user changes synthesis model, re-fetch split so server recomputes contributors
-  sel.addEventListener('change', async function() {
-    const chosen = this.value;
-    const contributors = availableModels.filter(m => m !== chosen);
-    renderContributorChips(contributors);
+  sel.addEventListener('change', function() {
+    renderContributorChips(availableModels.filter(m => m !== this.value));
   });
 }
 
@@ -354,16 +434,16 @@ function currentSynthModel() {
   return sel ? sel.value : configSynthModel;
 }
 
-loadModels();
-
 function selectedModels() {
   return [...document.querySelectorAll('#contributor-chips input:checked')].map(i => i.value);
 }
 
+loadModels();
+
 // ── History ────────────────────────────────────────────────────────────────
 async function loadHistory() {
   try {
-    const r = await fetch('/quorum/history?limit=50');
+    const r    = await fetch('/quorum/history?limit=50');
     const jobs = await r.json();
     renderHistory(jobs);
   } catch { /* silently skip */ }
@@ -371,32 +451,27 @@ async function loadHistory() {
 
 function renderHistory(jobs) {
   const list = document.getElementById('history-list');
-  if (!jobs.length) {
-    list.innerHTML = '<div class="sidebar-empty">No jobs yet</div>';
-    return;
-  }
+  if (!jobs.length) { list.innerHTML = '<div class="sidebar-empty">No jobs yet</div>'; return; }
   list.innerHTML = jobs.map(j => {
-    const d = new Date(j.created_at);
+    const d   = new Date(j.created_at);
     const ago = timeAgo(d);
-    const statusClass = 'status-' + j.status;
-    const q = escapeHtml(j.question.length > 80 ? j.question.slice(0, 80) + '…' : j.question);
-    return `<div class="history-item${j.job_id === currentJobId ? ' active' : ''}"
-                 onclick="loadJob('${j.job_id}')">
+    const q   = escapeHtml(j.question.length > 80 ? j.question.slice(0, 80) + '…' : j.question);
+    return `<div class="history-item${j.job_id === currentJobId ? ' active' : ''}" onclick="loadJob('${j.job_id}')">
               <div class="history-q">${q}</div>
               <div class="history-meta">
                 <span class="history-time">${ago}</span>
-                <span class="status-pill ${statusClass}">${j.status}</span>
+                <span class="status-pill status-${j.status}">${j.status}</span>
               </div>
             </div>`;
   }).join('');
 }
 
 function timeAgo(date) {
-  const secs = Math.floor((Date.now() - date) / 1000);
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
-  if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
-  return Math.floor(secs / 86400) + 'd ago';
+  const s = Math.floor((Date.now() - date) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
 }
 
 loadHistory();
@@ -405,28 +480,57 @@ setInterval(loadHistory, 15000);
 // ── Submit quorum ──────────────────────────────────────────────────────────
 async function submitQuorum() {
   const q = document.getElementById('question').value.trim();
-  if (!q) { flashHint('Enter a question first'); return; }
+  if (!q)  { flashHint('Enter a question first'); return; }
   const models = selectedModels();
   if (!models.length) { flashHint('Select at least one model'); return; }
 
   clearResults();
-  setLoading(true);
+  setLoading(true, researchEnabled);
   currentJobId = null;
 
-  try {
-    const r = await fetch('/quorum', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, models, synthesis_model: currentSynthModel() }),
-    });
-    const data = await r.json();
-    currentJobId = data.job_id;
-    setStatusText(`Job <strong>${currentJobId.slice(0, 8)}</strong> — polling for results…`);
-    pollJob(currentJobId);
-    loadHistory();
-  } catch (e) {
-    setLoading(false);
-    flashHint('Submit failed: ' + e.message);
+  const payload = {
+    question:        q,
+    models,
+    synthesis_model: currentSynthModel(),
+    enable_fetch:    researchEnabled,
+    fetch_mode:      currentDepth,
+  };
+
+  if (researchEnabled) {
+    // ── Research mode: use /quorum/sync (blocks until fetch + quorum done) ──
+    setStatusText('fetch', `<span class="phase-badge">RESEARCH</span>&nbsp; Crawling sources (${currentDepth})…`);
+    try {
+      const r    = await fetch('/quorum/sync', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      const data = await r.json();
+      currentJobId = data.job_id;
+      setLoading(false);
+      renderResults(data);
+      loadHistory();
+    } catch (e) {
+      setLoading(false);
+      flashHint('Submit failed: ' + e.message);
+    }
+  } else {
+    // ── Standard mode: async POST + poll ──────────────────────────────────
+    try {
+      const r    = await fetch('/quorum', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      const data = await r.json();
+      currentJobId = data.job_id;
+      setStatusText('quorum', `Job <strong>${currentJobId.slice(0,8)}</strong> — polling…`);
+      pollJob(currentJobId);
+      loadHistory();
+    } catch (e) {
+      setLoading(false);
+      flashHint('Submit failed: ' + e.message);
+    }
   }
 }
 
@@ -434,7 +538,7 @@ function pollJob(jobId) {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
     try {
-      const r = await fetch('/quorum/' + jobId);
+      const r    = await fetch('/quorum/' + jobId);
       const data = await r.json();
       if (data.status === 'complete') {
         clearInterval(pollTimer);
@@ -446,7 +550,7 @@ function pollJob(jobId) {
         setLoading(false);
         flashHint('Job failed on server');
       } else {
-        setStatusText(`Job <strong>${jobId.slice(0, 8)}</strong> — ${data.status}…`);
+        setStatusText('quorum', `Job <strong>${jobId.slice(0,8)}</strong> — ${data.status}…`);
       }
     } catch { /* retry next tick */ }
   }, 2000);
@@ -455,14 +559,14 @@ function pollJob(jobId) {
 async function loadJob(jobId) {
   clearResults();
   currentJobId = jobId;
-  const r = await fetch('/quorum/' + jobId);
+  const r    = await fetch('/quorum/' + jobId);
   const data = await r.json();
   document.getElementById('question').value = data.question || '';
   if (data.status === 'complete') {
     renderResults(data);
   } else if (data.status === 'running' || data.status === 'pending') {
-    setLoading(true);
-    setStatusText(`Job <strong>${jobId.slice(0, 8)}</strong> — ${data.status}…`);
+    setLoading(true, false);
+    setStatusText('quorum', `Job <strong>${jobId.slice(0,8)}</strong> — ${data.status}…`);
     pollJob(jobId);
   }
   loadHistory();
@@ -473,41 +577,72 @@ function renderResults(data) {
   document.getElementById('placeholder').classList.add('hidden');
   document.getElementById('results-section').classList.remove('hidden');
 
+  // Model cards
   const grid = document.getElementById('cards-grid');
   grid.innerHTML = '';
-
   (data.responses || []).forEach(r => {
     const isError = r.content && r.content.startsWith('[error');
-    const card = document.createElement('div');
+    const card    = document.createElement('div');
     card.className = 'model-card';
     card.innerHTML = `
       <div class="card-header">
         <span class="card-model-name">${escapeHtml(r.model)}</span>
         <div class="card-stats">
           ${r.duration_ms ? `<span class="stat">⏱ <span class="stat-val">${(r.duration_ms/1000).toFixed(1)}s</span></span>` : ''}
-          ${r.tokens_out ? `<span class="stat">▲ <span class="stat-val">${r.tokens_out}</span> tok</span>` : ''}
+          ${r.tokens_out  ? `<span class="stat">▲ <span class="stat-val">${r.tokens_out}</span> tok</span>` : ''}
         </div>
       </div>
-      <div class="card-body${isError ? ' error' : ''}">${escapeHtml(r.content || '—')}</div>
-    `;
+      <div class="card-body${isError ? ' error' : ''}">${escapeHtml(r.content || '—')}</div>`;
     grid.appendChild(card);
   });
 
-  // Narrative
+  // Narrative label + stats
   document.getElementById('narrative-model-label').textContent =
     '✦ ' + (data.synthesis_model || 'Synthesis');
   document.getElementById('narrative-body').textContent = data.narrative || '—';
-
-  const nsStats = document.getElementById('narrative-stats');
-  nsStats.innerHTML = [
+  document.getElementById('narrative-stats').innerHTML = [
     data.synthesis_duration_ms ? `<span class="stat">⏱ <span class="stat-val">${(data.synthesis_duration_ms/1000).toFixed(1)}s</span></span>` : '',
-    data.synthesis_tokens_out ? `<span class="stat">▲ <span class="stat-val">${data.synthesis_tokens_out}</span> tok</span>` : '',
+    data.synthesis_tokens_out  ? `<span class="stat">▲ <span class="stat-val">${data.synthesis_tokens_out}</span> tok</span>` : '',
   ].filter(Boolean).join('');
 
-  // R1 reasoning block — show only when thinking is present
-  const existingReasoning = document.getElementById('reasoning-block');
-  if (existingReasoning) existingReasoning.remove();
+  const synthSection = document.getElementById('synthesis-section');
 
+  // Remove old extras
+  ['reasoning-block', 'fetch-context-block', 'fetch-meta-bar'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
+
+  const sectionLabel = synthSection.querySelector('.section-label');
+
+  // ── Research context block (if fetch was used) ───────────────────────────
+  if (data.fetch_job_id && data.fetch_context_preview) {
+    const metaBar = document.createElement('div');
+    metaBar.id = 'fetch-meta-bar';
+    metaBar.className = 'fetch-meta-bar';
+    metaBar.innerHTML =
+      `<span class="fetch-meta-icon">🔍</span>` +
+      `<span class="fetch-meta-text">` +
+        `Research context retrieved — ` +
+        `<strong>${data.fetch_sources_count || 0} sources</strong> fetched` +
+        ` &nbsp;·&nbsp; job <strong>${data.fetch_job_id.slice(0,8)}</strong>` +
+      `</span>`;
+    sectionLabel.after(metaBar);
+
+    const ctxBlock = document.createElement('div');
+    ctxBlock.id = 'fetch-context-block';
+    ctxBlock.className = 'fetch-context-block';
+    ctxBlock.innerHTML =
+      `<button class="fetch-context-toggle" onclick="toggleFetchContext(this)">` +
+        `<span class="arrow">▶</span>` +
+        `<span style="color:var(--teal)">Research Context Preview</span>` +
+        `<span style="margin-left:auto;font-size:11px;opacity:0.6">${data.fetch_context_preview.length} chars (excerpt)</span>` +
+      `</button>` +
+      `<div class="fetch-context-content">${escapeHtml(data.fetch_context_preview)}</div>`;
+    metaBar.after(ctxBlock);
+  }
+
+  // ── R1 reasoning block ───────────────────────────────────────────────────
   if (data.synthesis_thinking) {
     const wordCount = data.synthesis_thinking.split(/\s+/).length;
     const block = document.createElement('div');
@@ -520,9 +655,8 @@ function renderResults(data) {
         `<span style="margin-left:auto;font-size:11px;opacity:0.6">${wordCount} words</span>` +
       `</button>` +
       `<div class="reasoning-content">${escapeHtml(data.synthesis_thinking)}</div>`;
-    const narrativeSection = document.querySelector('#results-section > div:last-child');
-    const sectionLabel = narrativeSection.querySelector('.section-label');
-    sectionLabel.after(block);
+    // Insert right before the narrative panel
+    document.getElementById('narrative-panel').before(block);
   }
 }
 
@@ -531,14 +665,26 @@ function toggleReasoning(btn) {
   btn.nextElementSibling.classList.toggle('open');
 }
 
+function toggleFetchContext(btn) {
+  btn.classList.toggle('open');
+  btn.nextElementSibling.classList.toggle('open');
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
-function setLoading(on) {
+function setLoading(on, fetchPhase) {
   document.getElementById('submit-btn').disabled = on;
-  document.getElementById('status-bar').classList.toggle('hidden', !on);
+  const bar     = document.getElementById('status-bar');
+  const spinner = document.getElementById('status-spinner');
+  bar.classList.toggle('hidden', !on);
+  bar.classList.toggle('fetch-phase', on && fetchPhase);
+  spinner.classList.toggle('teal', on && fetchPhase);
   if (!on) document.getElementById('status-text').textContent = '';
 }
 
-function setStatusText(html) {
+function setStatusText(phase, html) {
+  const bar = document.getElementById('status-bar');
+  bar.classList.toggle('fetch-phase', phase === 'fetch');
+  document.getElementById('spinner').classList.toggle('teal', phase === 'fetch');
   document.getElementById('status-text').innerHTML = html;
 }
 
@@ -555,8 +701,12 @@ function clearResults() {
   document.getElementById('cards-grid').innerHTML = '';
   document.getElementById('narrative-body').textContent = '—';
   document.getElementById('narrative-stats').innerHTML = '';
+  ['reasoning-block', 'fetch-context-block', 'fetch-meta-bar'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  setLoading(false);
+  setLoading(false, false);
 }
 
 function escapeHtml(s) {
