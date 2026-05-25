@@ -8,9 +8,9 @@
 
 ---
 
-## What was built (complete)
+## What is complete
 
-The full TectumFW stack is done and pushed. All 37 core tasks completed:
+All 38 tasks done and pushed to GitHub:
 
 - **3-tier routing**: semantic memory cache → direct fast-path → full quorum with R1 synthesis
 - **Semantic memory**: nomic-embed-text embeddings in pgvector, cosine similarity ≥ 0.82 = cache hit
@@ -19,99 +19,96 @@ The full TectumFW stack is done and pushed. All 37 core tasks completed:
 - **Auto-fetch**: news-intent queries trigger tectum_fetcher automatically
 - **Fetcher**: shared httpx client, BeautifulSoup in thread pool, batch size 10
 - **UI**: full terminal-themed single-page app at localhost:8000
-- **README**: complete with architecture diagram, API reference, UI walkthrough
+- **README**: complete with architecture diagram, API reference, UI walkthrough, all 8 screenshots
+- **HANDBOOK.md**: living reference — routing behavior, thresholds, model swap, ops notes, quirks
+- **git_push.sh**: authenticated push via GITHUB_USER + GITHUB_TOKEN from .env — `bash git_push.sh`
 
 ---
 
-## What's still needed (task #38)
-
-**8 UI screenshots** for the README — saved to `assets/screenshots/`:
-
-| Filename | Status | What to capture |
-|---|---|---|
-| `ui_query_panel.png` | ❌ needed | Query panel — chips, synthesis selector, Research Mode toggle |
-| `ui_status_bar.png` | ❌ needed | Mid-request status bar — "QUORUM · Checking memory…" |
-| `ui_badges_memory.png` | ❌ needed | Badge row close-up — `⬡ DIRECT` + `⚡ FROM MEMORY` |
-| `ui_memory_hit.png` | ❌ needed | Memory meta bar — sim%, age, serve count |
-| `ui_full_memory.png` | ❌ needed | Full view — query + badges + cached synthesis |
-| `ui_history.png` | ❌ needed | Full UI with history sidebar |
-| `ui_model_cards.png` | ❌ needed | Three contributor cards from a full quorum run |
-| `ui_synthesis.png` | ❌ needed | R1 synthesis panel with ▶ Reasoning block expanded |
-
-Currently in `assets/screenshots/`: only `test.png` (a test shot from Chrome headless).
-
----
-
-## Screenshot approach that works
-
-Chrome headless (`chrome.exe`) running on Windows can take screenshots via `--screenshot` flag. This was proven working:
+## Git / push workflow
 
 ```bash
-# From WSL2 terminal at localhost:7681 (bash on TheCloven)
-CHROME="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
-SHOTS_WIN=$(wslpath -w "/mnt/c/Users/bmaas/repo/Cloven_Distro_TectumFW/assets/screenshots")
-"$CHROME" --headless=new --disable-gpu --window-size=1456,819 \
-  --screenshot="$SHOTS_WIN\\filename.png" "http://localhost:8000/" 2>/dev/null
+# From WSL2 terminal — stages everything, commits, pushes via token in .env
+bash /mnt/c/Users/bmaas/repo/Cloven_Distro_TectumFW/git_push.sh
+
+# With a custom commit message
+bash git_push.sh "feat: your message here"
 ```
 
-This produced a valid 70KB PNG. **The `wslpath -w` conversion is required** — Chrome.exe doesn't understand Linux WSL2 paths.
-
-### Limitation: static pages only
-
-`--screenshot` takes a snapshot at page load. It doesn't support triggering JS actions (like clicking "Run Quorum" or loading a specific job).
+Token lives in `.env` as `GITHUB_TOKEN` — never in git history. `.env` is gitignored.
 
 ---
 
-## CDP approach (partially working, needs firewall fix)
+## Ecosystem context
 
-`take_screenshots.py` in the repo root uses Chrome DevTools Protocol to:
-1. Start Chrome headless with `--remote-debugging-port=9224`
-2. Connect via WebSocket (Python `websockets` library — already installed via `pip3 install websockets --break-system-packages`)
-3. Navigate to pages, call `loadJob('job-id')` via JS, wait for render, capture PNG
+TectumFW is one node in a planned constellation of hardened local MCPs:
 
-**Problem:** Chrome.exe binds CDP to Windows `127.0.0.1:9224`. From WSL2, the Windows host is at `172.24.224.1` (detected automatically by the script), but Windows Firewall blocks WSL2→Windows on port 9224.
+| MCP | Status | Purpose |
+|-----|--------|---------|
+| **TectumFW** | ✅ Running — `localhost:8000` | Multi-model reasoning, semantic memory, web fetch |
+| **UniFi MCP** | ✅ Running — `192.168.1.232:8100` | Network intelligence — devices, clients, firewall, events, DPI |
+| **Log Analysis MCP** | 🔲 Next build | SIEM intake, log normalization, contextual ops reasoning |
 
-**Fix options (pick one):**
+Philosophy: harden each MCP independently, then compose the best pieces into unified solutions. Don't consolidate until each layer is breakproof.
 
-**Option A — Run the Python script on Windows directly (recommended):**
-```powershell
-# In PowerShell (Windows-side, not WSL2):
-pip install websockets
-python C:\Users\bmaas\repo\Cloven_Distro_TectumFW\take_screenshots.py
-```
-Python3 may need to be installed on Windows if not present. The script's `CHROME` path is already the Windows WSL2-style path — change line 25 to:
-```python
-CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-```
-(The script has a WSL2 path `"/mnt/c/Program Files/..."` which only works from WSL2.)
-
-**Option B — Add Windows Firewall rule to allow WSL2 → port 9224:**
-```powershell
-# In PowerShell as Administrator:
-New-NetFirewallRule -DisplayName "Chrome CDP WSL2" -Direction Inbound -Protocol TCP -LocalPort 9224 -Action Allow
-```
-Then run from WSL2 terminal as before.
-
-**Option C — Use `--screenshot` with JS injection via a custom HTML redirect page:**
-Write a temp HTML file that auto-submits to the API, then screenshot that. Only works for states achievable from a URL.
+All outbound traffic routes through Cloudflare. Everything runs locally — no cloud LLM calls.
 
 ---
 
-## How to load specific result states for screenshots
+## Immediate fix needed
 
-The TectumFW UI has a `loadJob(jobId)` function. In the CDP script this works:
-```javascript
-loadJob('some-job-uuid')  // loads a completed result into the UI
-```
+**IPS false positive:** 192.168.1.232 (UniFi MCP / AI server) is being flagged by CyberSecure for connecting to GitHub (140.82.114.4). It's polluting Security events. Whitelist it before building log analysis or the signal will be noisy from day one.
 
-Get job IDs from the API:
 ```bash
-curl http://localhost:8000/quorum/history?limit=20
+# Create a trusted hosts firewall group via UniFi MCP
+curl -X POST http://192.168.1.232:8100/firewall/groups \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Trusted AI Hosts", "group_type": "address-group", "members": ["192.168.1.232"]}'
 ```
 
-Look for:
-- **Memory hit** (direct intent, speed of light): `intent=direct`, `question` contains "speed of light"  
-- **Model cards + synthesis**: `intent=reference`, completed quorum — look for "diabetes", "stars", "woodchuck"
+Then add an IPS exception referencing that group in the UniFi console.
+
+---
+
+## Next builds (in order)
+
+### 1. SIEM intake endpoint on TectumFW
+
+UniFi has a native "Export to SIEM Server" button (bottom-left of the Network logs view). Build a `/siem` intake endpoint that receives those structured log events, normalizes them, and wires them into TectumFW's existing `logs` intent. This is the foundation for everything else.
+
+**What to build:**
+- POST endpoint `/siem` on `cloven_tectum_api` (or a new sidecar container)
+- Accept UniFi syslog/JSON format, normalize to a standard event schema
+- Store events in a new `network_events` table in postgres
+- When `intent=logs`, query recent events as context before running quorum
+- Point UniFi SIEM export at `http://<TheCloven IP>:<port>/siem`
+
+**UniFi events endpoint for reference (polling fallback):**
+```bash
+curl http://192.168.1.232:8100/events?limit=200&filter=Security
+```
+Categories worth routing to `logs` intent: Security (78), VPN (272), Internet and WAN (44)
+
+### 2. Fetcher content sanitization
+
+Before exposing TectumFW as an MCP to other LLMs, harden the fetcher against:
+- Ad text embedded in otherwise-clean pages (high link density = reject chunk)
+- Prompt injection in crawled content (scan for instruction-like patterns before injecting into model prompts)
+- Known bad domains (blocklist pass before crawl)
+
+Lives in `tectum_framework/fetcher/crawler.py` — add a `sanitize(content)` pass after BS4 extraction, before the context assembler.
+
+### 3. MCP protocol exposure on TectumFW
+
+Expose TectumFW as a proper stdio MCP server so other LLMs on the network can call it as a tool — same pattern as `unifi-mcp`. Other agents call it and get back cached, reasoned, network-aware answers.
+
+**What to build:**
+- `tectum_mcp/` directory alongside `tectum_framework/`
+- stdio MCP server wrapping the existing `/quorum/sync` and `/memory/search` endpoints
+- Tools to expose: `ask_tectum(question)`, `search_memory(query)`, `fetch_context(topic)`
+- Register in Claude Desktop / Open WebUI as a tool provider
+
+This is the "SaaMCP" milestone — TectumFW becomes callable by any LLM on the network.
 
 ---
 
@@ -119,12 +116,13 @@ Look for:
 
 ```
 Cloven_Distro_TectumFW/
-├── take_screenshots.py          ← CDP screenshot script (WSL2-ready, needs firewall fix OR run on Windows)
-├── assets/screenshots/          ← destination for all 8 PNG files
-│   └── test.png                 ← proof-of-concept Chrome headless shot
-├── README.md                    ← full docs, references all 8 screenshot filenames
+├── git_push.sh                  ← authenticated push via .env token
+├── SESSION_HANDOFF.md           ← this file
+├── HANDBOOK.md                  ← living capability reference
+├── README.md                    ← full docs + all 8 screenshots
+├── assets/screenshots/          ← all 8 UI PNGs (complete)
 ├── docker-compose.yml           ← 4-service stack (ollama, db, api, fetcher)
-├── .env                         ← local config (not in git)
+├── .env                         ← local config + GITHUB_TOKEN (gitignored)
 ├── tectum_framework/
 │   ├── api_server/
 │   │   ├── main.py              ← 3-tier router, memory layer, FastAPI
@@ -136,31 +134,8 @@ Cloven_Distro_TectumFW/
 │       ├── optimizer.py         ← intent classifier (temp=0, deterministic)
 │       ├── crawler.py           ← ant crawler, shared httpx client
 │       └── fetchers/web.py      ← BS4 in thread pool
-```
-
----
-
-## Uncommitted changes
-
-The git index has a corruption (`fatal: unable to read 7cf295cc...`) — run from WSL2 terminal:
-
-```bash
-cd /mnt/c/Users/bmaas/repo/Cloven_Distro_TectumFW
-git fsck --unreachable 2>&1 | head -5
-# If index is corrupt:
-rm .git/index && git reset
-git status
-```
-
-Files changed since last commit (based on working tree):
-- `take_screenshots.py` — new file (screenshot tool)
-- `assets/screenshots/test.png` — test shot
-
-After taking all 8 screenshots, commit with:
-```bash
-git add assets/screenshots/ take_screenshots.py
-git commit -m "docs: add UI screenshots for README"
-git push
+└── unifi-mcp (separate repo)
+    └── running at 192.168.1.232:8100
 ```
 
 ---
@@ -176,29 +151,31 @@ curl http://localhost:8000/health
 
 # Memory working?
 curl "http://localhost:8000/memory/search?q=speed+of+light&threshold=0.8"
+
+# UniFi MCP alive?
+curl http://192.168.1.232:8100/info
 ```
 
 ---
 
-## Models loaded
+## Models
 
 | Model | Role | VRAM |
-|---|---|---|
+|-------|------|------|
 | `llama3.2:3b` | Intent classifier + direct path | ~2GB |
 | `qwen2.5:7b` | Contributor | ~5GB |
 | `mistral-nemo:12b` | Contributor | ~8GB |
 | `deepseek-r1:14b` | Synthesis (R1 reasoning) | ~10GB |
 | `nomic-embed-text` | Memory embeddings | small |
 
-OLLAMA_NUM_PARALLEL=3, OLLAMA_MAX_LOADED_MODELS=4 set in docker-compose.yml.
+`OLLAMA_NUM_PARALLEL=3`, `OLLAMA_MAX_LOADED_MODELS=4` in docker-compose.yml.
 
 ---
 
-## Recommended next session start
+## Session start checklist
 
-1. Open WSL2 terminal at `C:\Users\bmaas\repo\Cloven_Distro_TectumFW`
-2. Confirm stack is up: `docker ps`
-3. Open http://localhost:8000 in Chrome — UI should show full history sidebar
-4. Take the 8 screenshots using **Option A** (PowerShell + Python on Windows side) or **Option B** (firewall rule)
-5. Commit and push
-6. Delete `take_screenshots.py` and `SESSION_HANDOFF.md` if no longer needed
+1. `docker ps` — confirm all 4 containers up
+2. `curl http://localhost:8000/health` — API healthy
+3. `curl http://192.168.1.232:8100/info` — UniFi MCP alive
+4. Open http://localhost:8000 — UI loads with history sidebar
+5. Pick up next build from the list above
