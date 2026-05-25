@@ -80,6 +80,121 @@ Navigate to `http://localhost:8000` for the UI, or `http://localhost:8000/docs` 
 
 ---
 
+## Using the UI
+
+Navigate to `http://localhost:8000` to open the TectumFW interface. Everything in the pipeline is accessible from this single page.
+
+---
+
+### The Query Panel
+
+![Query Panel](assets/screenshots/ui_query_panel.png)
+> *Screenshot: the main input area with model chips, synthesis selector, Research Mode toggle, and Run Quorum button.*
+
+**Question box** — type your question here. Any length is supported; the optimizer reads the full text to classify intent before routing.
+
+**Quorum Contributors** — colored chips showing each available model pulled from Ollama. Click a chip to toggle it in or out of the contributor pool. Green dot = included, dimmed = excluded. The synthesis model is automatically excluded from this list.
+
+**Synthesis Model** — dropdown showing available models. Defaults to `deepseek-r1:14b`. This model reads all contributor responses and writes the final narrative. Swap it per-query without changing any config.
+
+**Research Mode toggle** — off by default. When enabled, tectum_fetcher crawls live web sources (RSS, Wikipedia, web pages) before the quorum runs and injects that context into every model's prompt. Depth buttons (Quick / Standard / Deep) control crawl time: ~30s, ~2min, ~10min respectively. Note: queries classified as `news` intent trigger a fetch automatically even with this toggle off.
+
+**Run Quorum / Clear** — Run submits the question through the full 3-tier pipeline. Clear resets the result area without clearing the question box.
+
+---
+
+### Status Bar
+
+![Status Bar](assets/screenshots/ui_status_bar.png)
+> *Screenshot: the animated status bar showing "Checking memory, classifying..." during a request.*
+
+While a request is running, a status bar appears below the query panel showing the current phase: memory check, classification, fetch (teal highlight when fetcher is active), or quorum inference.
+
+---
+
+### Result Badges
+
+Every completed result shows a badge row indicating how it was served:
+
+| Badge | Meaning |
+|-------|---------|
+| `⬡ DIRECT` | Query classified as immutable fact (math, constant, conversion) |
+| `→ DIRECT` | Answer served by single fast-path model, no quorum |
+| `⚡ FROM MEMORY` | Answer served from semantic memory cache, zero inference |
+| `⬡ REFERENCE` | Full quorum ran, encyclopedic question |
+| `⬡ NEWS` | Full quorum ran with auto-fetched live context |
+| `⬡ QUORUM ×3` | N contributor models ran in parallel |
+
+![Direct path badges](assets/screenshots/ui_badges_direct.png)
+> *Screenshot: `⬡ DIRECT` + `→ DIRECT` badges on a speed-of-light query answered by llama3.2:3b in ~3s.*
+
+![Memory hit badges](assets/screenshots/ui_badges_memory.png)
+> *Screenshot: `⬡ DIRECT` + `⚡ FROM MEMORY` badges on a paraphrase query ("how fast does light travel") served instantly from cache at 84.6% similarity.*
+
+---
+
+### Memory Hit Panel
+
+![Memory hit panel](assets/screenshots/ui_memory_hit.png)
+> *Screenshot: the memory meta bar showing similarity score, cache age, and serve count.*
+
+When a result comes from semantic memory, a meta bar appears above the synthesis showing:
+- **Match %** — cosine similarity between this query and the cached query (≥ 82% to qualify)
+- **Cached** — how long ago the answer was stored
+- **Served ×N** — how many times this cached entry has been returned
+
+---
+
+### Model Response Cards
+
+![Model response cards](assets/screenshots/ui_model_cards.png)
+> *Screenshot: three contributor response cards side-by-side showing model name, response time, and token count.*
+
+Each contributor model gets its own card showing the raw response, inference time (⏱), and output token count (▲). These are the independent answers R1 synthesizes across. Cards only appear on full quorum runs — direct path and memory hits show a single synthesis panel.
+
+---
+
+### Synthesis Panel and R1 Reasoning
+
+![Synthesis panel](assets/screenshots/ui_synthesis.png)
+> *Screenshot: the synthesis panel with R1's narrative and the collapsed reasoning block beneath it.*
+
+The synthesis panel shows the final narrative from the synthesis model. When DeepSeek-R1 is used, a **▶ R1 Reasoning** collapsible section appears beneath the narrative — this is R1's raw `<think>` block, showing the internal reasoning chain it used to weigh the contributor responses before writing the answer.
+
+---
+
+### History Sidebar
+
+![History sidebar](assets/screenshots/ui_history.png)
+> *Screenshot: the left sidebar showing recent queries with status indicators.*
+
+The sidebar on the left lists recent jobs pulled from the database. Click any entry to reload that result. Status indicators: `●` complete, `○` running, `✕` error.
+
+---
+
+### Theme Toggle
+
+The top-right corner has **Dark / Dim / Light** theme buttons. Preference is saved to localStorage and restored on next visit.
+
+---
+
+### Screenshots Needed
+
+To complete the documentation, capture and save the following to `assets/screenshots/`:
+
+| Filename | What to capture |
+|----------|----------------|
+| `ui_query_panel.png` | The query panel before submitting — show all chips, selectors, toggle |
+| `ui_status_bar.png` | The animated status bar mid-request |
+| `ui_badges_direct.png` | A `⬡ DIRECT` + `→ DIRECT` result (submit "what is 2+2") |
+| `ui_badges_memory.png` | A `⚡ FROM MEMORY` result (submit "how fast does light travel" after the speed of light is cached) |
+| `ui_memory_hit.png` | Close-up of the memory meta bar showing sim%, age, serve count |
+| `ui_model_cards.png` | Three model cards from a full quorum run |
+| `ui_synthesis.png` | The synthesis panel with the R1 reasoning block expanded |
+| `ui_history.png` | The history sidebar with a few entries |
+
+---
+
 ## The 3-Tier Pipeline
 
 ### Tier 1 — Semantic Memory Cache
