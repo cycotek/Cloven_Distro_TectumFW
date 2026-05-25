@@ -36,9 +36,9 @@ DATABASE_USER = os.getenv("DATABASE_USER", "cloven")
 DATABASE_PASS = os.getenv("DATABASE_PASS", "changeme")
 
 # Minimum cosine similarity to count as a cache hit (0.0–1.0)
-# 0.88 means the query must be semantically very close to a stored one.
-# Lower this to 0.80 for broader matching, raise to 0.92 for stricter.
-DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("MEMORY_SIMILARITY_THRESHOLD", "0.88"))
+# 0.82 catches paraphrases (e.g. "how fast does light travel" ≈ "what is the speed of light")
+# 0.88 requires very close phrasing; 0.75 is broadly permissive; 0.92 is nearly exact.
+DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("MEMORY_SIMILARITY_THRESHOLD", "0.82"))
 
 
 # ── DB ────────────────────────────────────────────────────────────────────────
