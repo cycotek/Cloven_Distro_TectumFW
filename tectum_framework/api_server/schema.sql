@@ -65,3 +65,39 @@ CREATE TABLE IF NOT EXISTS fetch_context (
     query_packet JSONB,
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- ── Memory layer (BorderManager-style semantic cache) ─────────────────────────
+--
+-- Stores synthesized knowledge as vector embeddings. Before running a full
+-- quorum + fetch pipeline, the API checks here first. Cache hit = instant
+-- response. Cache miss = run pipeline, then store result here.
+--
+-- Embedding model: nomic-embed-text (768 dimensions via Ollama)
+-- Similarity metric: cosine (1 - distance)
+-- TTL: enforced by application per intent (news=1d, reference=30d, direct=365d)
+
+CREATE TABLE IF NOT EXISTS tectum_memory (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    embedding       vector(768),                       -- nomic-embed-text
+    content         TEXT NOT NULL,                     -- the synthesized narrative
+    query           TEXT NOT NULL,                     -- original query that produced this
+    topic           TEXT,                              -- short label (filled by app)
+    intent          VARCHAR(50),                       -- news|reference|direct|etc
+    confidence      FLOAT DEFAULT 1.0,                 -- future: user rating 0-1
+    source_job_id   UUID,                              -- quorum_jobs.id (nullable)
+    source_type     VARCHAR(50) DEFAULT 'synthesis',   -- synthesis|direct|manual
+    hit_count       INTEGER DEFAULT 0,                 -- times this was served from cache
+    memory_ttl_days INTEGER DEFAULT 7,                 -- days until stale
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    last_used_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- IVFFlat index for fast approximate nearest-neighbour cosine search
+-- (lists=100 is appropriate for up to ~1M rows; rebuild with lists=sqrt(n) as data grows)
+CREATE INDEX IF NOT EXISTS tectum_memory_embedding_idx
+    ON tectum_memory USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
+-- Quick lookup by intent + recency (used for TTL filtering)
+CREATE INDEX IF NOT EXISTS tectum_memory_intent_created_idx
+    ON tectum_memory (intent, created_at DESC);

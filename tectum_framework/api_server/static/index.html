@@ -201,6 +201,20 @@ textarea, input, select { font-family: inherit; }
 .reasoning-content { display: none; padding: 12px 14px; font-size: 12px; font-family: var(--mono); color: var(--text-muted); line-height: 1.6; white-space: pre-wrap; word-break: break-word; background: var(--bg); border-top: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
 .reasoning-content.open { display: block; }
 
+/* ── Memory / intent badges ──────────────────────────────────────────────── */
+.result-badges { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.4px; }
+.badge-memory { background: color-mix(in srgb, #f0c040 18%, transparent); color: #f0c040; border: 1px solid color-mix(in srgb, #f0c040 40%, transparent); }
+.badge-direct { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); }
+.badge-intent { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.badge-quorum { background: color-mix(in srgb, var(--text-muted) 12%, transparent); color: var(--text-muted); border: 1px solid var(--border); }
+
+.memory-meta-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: color-mix(in srgb, #f0c040 8%, var(--surface)); border: 1px solid color-mix(in srgb, #f0c040 35%, var(--border)); border-radius: 8px; margin-bottom: 10px; }
+.memory-meta-icon { font-size: 14px; }
+.memory-meta-text { font-size: 12px; color: var(--text-muted); flex: 1; }
+.memory-meta-text strong { color: #f0c040; }
+.memory-meta-text .sim { font-family: var(--mono); }
+
 /* ── Misc ────────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
 .section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
@@ -494,43 +508,30 @@ async function submitQuorum() {
     synthesis_model: currentSynthModel(),
     enable_fetch:    researchEnabled,
     fetch_mode:      currentDepth,
+    use_memory:      true,
   };
 
-  if (researchEnabled) {
-    // ── Research mode: use /quorum/sync (blocks until fetch + quorum done) ──
-    setStatusText('fetch', `<span class="phase-badge">RESEARCH</span>&nbsp; Crawling sources (${currentDepth})…`);
-    try {
-      const r    = await fetch('/quorum/sync', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      });
-      const data = await r.json();
-      currentJobId = data.job_id;
-      setLoading(false);
-      renderResults(data);
-      loadHistory();
-    } catch (e) {
-      setLoading(false);
-      flashHint('Submit failed: ' + e.message);
-    }
-  } else {
-    // ── Standard mode: async POST + poll ──────────────────────────────────
-    try {
-      const r    = await fetch('/quorum', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      });
-      const data = await r.json();
-      currentJobId = data.job_id;
-      setStatusText('quorum', `Job <strong>${currentJobId.slice(0,8)}</strong> — polling…`);
-      pollJob(currentJobId);
-      loadHistory();
-    } catch (e) {
-      setLoading(false);
-      flashHint('Submit failed: ' + e.message);
-    }
+  // Always use /quorum/sync — memory cache + direct routing means most queries
+  // return near-instantly anyway; research mode just takes longer on miss.
+  const statusMsg = researchEnabled
+    ? `<span class="phase-badge">RESEARCH</span>&nbsp; Crawling sources (${currentDepth})…`
+    : `<span class="phase-badge">QUORUM</span>&nbsp; Checking memory, classifying…`;
+  setStatusText(researchEnabled ? 'fetch' : 'quorum', statusMsg);
+
+  try {
+    const r    = await fetch('/quorum/sync', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    const data = await r.json();
+    currentJobId = data.job_id;
+    setLoading(false);
+    renderResults(data);
+    loadHistory();
+  } catch (e) {
+    setLoading(false);
+    flashHint('Submit failed: ' + e.message);
   }
 }
 
@@ -577,43 +578,111 @@ function renderResults(data) {
   document.getElementById('placeholder').classList.add('hidden');
   document.getElementById('results-section').classList.remove('hidden');
 
-  // Model cards
-  const grid = document.getElementById('cards-grid');
-  grid.innerHTML = '';
-  (data.responses || []).forEach(r => {
-    const isError = r.content && r.content.startsWith('[error');
-    const card    = document.createElement('div');
-    card.className = 'model-card';
-    card.innerHTML = `
-      <div class="card-header">
-        <span class="card-model-name">${escapeHtml(r.model)}</span>
-        <div class="card-stats">
-          ${r.duration_ms ? `<span class="stat">⏱ <span class="stat-val">${(r.duration_ms/1000).toFixed(1)}s</span></span>` : ''}
-          ${r.tokens_out  ? `<span class="stat">▲ <span class="stat-val">${r.tokens_out}</span> tok</span>` : ''}
-        </div>
-      </div>
-      <div class="card-body${isError ? ' error' : ''}">${escapeHtml(r.content || '—')}</div>`;
-    grid.appendChild(card);
-  });
-
-  // Narrative label + stats
-  document.getElementById('narrative-model-label').textContent =
-    '✦ ' + (data.synthesis_model || 'Synthesis');
-  document.getElementById('narrative-body').textContent = data.narrative || '—';
-  document.getElementById('narrative-stats').innerHTML = [
-    data.synthesis_duration_ms ? `<span class="stat">⏱ <span class="stat-val">${(data.synthesis_duration_ms/1000).toFixed(1)}s</span></span>` : '',
-    data.synthesis_tokens_out  ? `<span class="stat">▲ <span class="stat-val">${data.synthesis_tokens_out}</span> tok</span>` : '',
-  ].filter(Boolean).join('');
-
   const synthSection = document.getElementById('synthesis-section');
 
   // Remove old extras
-  ['reasoning-block', 'fetch-context-block', 'fetch-meta-bar'].forEach(id => {
+  ['result-badges', 'reasoning-block', 'fetch-context-block',
+   'fetch-meta-bar', 'memory-meta-bar'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.remove();
   });
 
+  // ── Result badges row (intent / memory / direct) ─────────────────────────
+  const badgesRow = document.createElement('div');
+  badgesRow.id = 'result-badges';
+  badgesRow.className = 'result-badges';
+
+  if (data.intent) {
+    const intentBadge = document.createElement('span');
+    intentBadge.className = 'badge badge-intent';
+    intentBadge.textContent = '⬡ ' + data.intent.toUpperCase();
+    badgesRow.appendChild(intentBadge);
+  }
+  if (data.from_memory) {
+    const memBadge = document.createElement('span');
+    memBadge.className = 'badge badge-memory';
+    memBadge.textContent = '⚡ FROM MEMORY';
+    badgesRow.appendChild(memBadge);
+  }
+  if (data.direct_path && !data.from_memory) {
+    const dirBadge = document.createElement('span');
+    dirBadge.className = 'badge badge-direct';
+    dirBadge.textContent = '→ DIRECT';
+    badgesRow.appendChild(dirBadge);
+  }
+  if (!data.from_memory && !data.direct_path && (data.responses||[]).length > 1) {
+    const qBadge = document.createElement('span');
+    qBadge.className = 'badge badge-quorum';
+    qBadge.textContent = `⬡ QUORUM ×${data.responses.length}`;
+    badgesRow.appendChild(qBadge);
+  }
+  if (badgesRow.children.length) {
+    synthSection.parentNode.insertBefore(badgesRow, synthSection);
+  }
+
+  // ── Memory hit meta bar ───────────────────────────────────────────────────
   const sectionLabel = synthSection.querySelector('.section-label');
+
+  if (data.from_memory) {
+    const age   = data.memory_created_at ? timeAgo(new Date(data.memory_created_at)) : '?';
+    const sim   = data.memory_similarity  ? (data.memory_similarity * 100).toFixed(1) : '?';
+    const hits  = data.memory_hit_count || 1;
+    const metaBar = document.createElement('div');
+    metaBar.id = 'memory-meta-bar';
+    metaBar.className = 'memory-meta-bar';
+    metaBar.innerHTML =
+      `<span class="memory-meta-icon">⚡</span>` +
+      `<span class="memory-meta-text">` +
+        `Served from <strong>semantic memory</strong> — ` +
+        `<strong class="sim">${sim}% match</strong> &nbsp;·&nbsp; ` +
+        `cached <strong>${age}</strong> &nbsp;·&nbsp; ` +
+        `served <strong>${hits}×</strong>` +
+      `</span>`;
+    sectionLabel.after(metaBar);
+  }
+
+  // ── Model cards (hidden for memory hits with no responses) ───────────────
+  const grid = document.getElementById('cards-grid');
+  const cardsSection = grid.closest ? grid.parentElement : grid;
+  grid.innerHTML = '';
+
+  if (data.from_memory) {
+    document.querySelector('.section-label').style.display = 'none';
+    grid.style.display = 'none';
+  } else {
+    document.querySelector('.section-label').style.display = '';
+    grid.style.display = '';
+    (data.responses || []).forEach(r => {
+      const isError = r.content && r.content.startsWith('[error');
+      const card    = document.createElement('div');
+      card.className = 'model-card';
+      card.innerHTML = `
+        <div class="card-header">
+          <span class="card-model-name">${escapeHtml(r.model)}</span>
+          <div class="card-stats">
+            ${r.duration_ms ? `<span class="stat">⏱ <span class="stat-val">${(r.duration_ms/1000).toFixed(1)}s</span></span>` : ''}
+            ${r.tokens_out  ? `<span class="stat">▲ <span class="stat-val">${r.tokens_out}</span> tok</span>` : ''}
+          </div>
+        </div>
+        <div class="card-body${isError ? ' error' : ''}">${escapeHtml(r.content || '—')}</div>`;
+      grid.appendChild(card);
+    });
+  }
+
+  // ── Narrative label + stats ───────────────────────────────────────────────
+  let narrativeLabel = '✦ Synthesis';
+  if (data.from_memory)      narrativeLabel = '⚡ Cached Synthesis';
+  else if (data.direct_path) narrativeLabel = '→ ' + (data.synthesis_model || 'Direct');
+  else                        narrativeLabel = '✦ ' + (data.synthesis_model || 'Synthesis');
+
+  document.getElementById('narrative-model-label').textContent = narrativeLabel;
+  document.getElementById('narrative-body').textContent = data.narrative || '—';
+  document.getElementById('narrative-stats').innerHTML = [
+    data.synthesis_duration_ms && !data.from_memory
+      ? `<span class="stat">⏱ <span class="stat-val">${(data.synthesis_duration_ms/1000).toFixed(1)}s</span></span>` : '',
+    data.synthesis_tokens_out && !data.from_memory
+      ? `<span class="stat">▲ <span class="stat-val">${data.synthesis_tokens_out}</span> tok</span>` : '',
+  ].filter(Boolean).join('');
 
   // ── Research context block (if fetch was used) ───────────────────────────
   if (data.fetch_job_id && data.fetch_context_preview) {
@@ -643,7 +712,7 @@ function renderResults(data) {
   }
 
   // ── R1 reasoning block ───────────────────────────────────────────────────
-  if (data.synthesis_thinking) {
+  if (data.synthesis_thinking && !data.from_memory) {
     const wordCount = data.synthesis_thinking.split(/\s+/).length;
     const block = document.createElement('div');
     block.id = 'reasoning-block';
@@ -655,7 +724,6 @@ function renderResults(data) {
         `<span style="margin-left:auto;font-size:11px;opacity:0.6">${wordCount} words</span>` +
       `</button>` +
       `<div class="reasoning-content">${escapeHtml(data.synthesis_thinking)}</div>`;
-    // Insert right before the narrative panel
     document.getElementById('narrative-panel').before(block);
   }
 }
@@ -701,7 +769,13 @@ function clearResults() {
   document.getElementById('cards-grid').innerHTML = '';
   document.getElementById('narrative-body').textContent = '—';
   document.getElementById('narrative-stats').innerHTML = '';
-  ['reasoning-block', 'fetch-context-block', 'fetch-meta-bar'].forEach(id => {
+  // Reset any hidden/shown sections
+  const cardsGrid = document.getElementById('cards-grid');
+  if (cardsGrid) cardsGrid.style.display = '';
+  const secLabel = document.querySelector('.section-label');
+  if (secLabel) secLabel.style.display = '';
+  ['result-badges', 'reasoning-block', 'fetch-context-block',
+   'fetch-meta-bar', 'memory-meta-bar'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.remove();
   });

@@ -14,14 +14,18 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from quorum import DEFAULT_MODELS, OLLAMA_HOST, SYNTHESIS_MODEL, run_quorum
+from memory import search_memory, store_synthesis
+from quorum import DEFAULT_MODELS, OLLAMA_HOST, SYNTHESIS_MODEL, _chat, run_quorum
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-FETCHER_HOST     = os.getenv("FETCHER_HOST", "http://cloven_tectum_fetcher:8001")
+FETCHER_HOST         = os.getenv("FETCHER_HOST", "http://cloven_tectum_fetcher:8001")
 _FETCH_POLL_INTERVAL = 2.0    # seconds between status polls
 _FETCH_TIMEOUT       = 360.0  # max seconds to wait for fetch to complete
+
+# Fast model for direct (single-answer) queries — skip quorum overhead
+DIRECT_MODEL = os.getenv("DIRECT_MODEL", "llama3.2:3b")
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -47,7 +51,7 @@ def get_db():
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Cloven Tectum API", version="0.6.0")
+app = FastAPI(title="Cloven Tectum API", version="0.7.0")
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -59,9 +63,35 @@ class QuorumRequest(BaseModel):
     # Research mode — triggers tectum_fetcher before quorum
     enable_fetch:     bool = False
     fetch_mode:       Literal["quick", "standard", "deep"] = "standard"
+    # Memory — set False to force a fresh run even if cache has a hit
+    use_memory:       bool = True
 
 
 # ── Fetcher helpers ───────────────────────────────────────────────────────────
+
+async def _classify_question(question: str, mode: str = "standard") -> dict:
+    """
+    Ask the fetcher to run just the optimizer (no crawl).
+    Returns a dict with intent, needs_quorum, memory_ttl_days, etc.
+    Falls back to safe defaults on any error.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{FETCHER_HOST}/classify",
+                json={"query": question, "mode": mode},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        log.warning("classify_question failed, using defaults: %s", exc)
+        return {
+            "intent": "reference",
+            "needs_quorum": True,
+            "memory_ttl_days": 7,
+        }
+
 
 async def _submit_fetch(question: str, mode: str) -> str:
     async with httpx.AsyncClient() as client:
@@ -170,6 +200,8 @@ def get_config():
         "synthesis_model": SYNTHESIS_MODEL,
         "default_models":  DEFAULT_MODELS,
         "fetcher_enabled": True,
+        "memory_enabled":  True,
+        "direct_model":    DIRECT_MODEL,
     }
 
 
@@ -213,6 +245,15 @@ def get_history(limit: int = Query(default=50, le=200)):
     ]
 
 
+@app.get("/memory/search")
+async def memory_search(q: str = Query(...), threshold: float = Query(default=0.88)):
+    """Debug endpoint — manually search semantic memory."""
+    hit = await search_memory(q, threshold=threshold)
+    if not hit:
+        return {"hit": False, "result": None}
+    return {"hit": True, "result": hit}
+
+
 @app.post("/quorum", status_code=202)
 async def submit_quorum(req: QuorumRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
@@ -243,10 +284,120 @@ async def submit_quorum(req: QuorumRequest, background_tasks: BackgroundTasks):
 
 @app.post("/quorum/sync")
 async def submit_quorum_sync(req: QuorumRequest):
-    job_id = str(uuid.uuid4())
     models = req.models or DEFAULT_MODELS
 
-    # ── Fetch phase ───────────────────────────────────────────────────────────
+    # ── Step 1: Classify intent ───────────────────────────────────────────────
+    packet = await _classify_question(req.question, req.fetch_mode)
+    intent           = packet.get("intent", "reference")
+    needs_quorum     = packet.get("needs_quorum", True)
+    memory_ttl_days  = packet.get("memory_ttl_days", 7)
+
+    log.info("classify: question=%r intent=%s needs_quorum=%s ttl=%d",
+             req.question[:60], intent, needs_quorum, memory_ttl_days)
+
+    # ── Step 2: Memory check (skip for ephemeral intents) ─────────────────────
+    memory_hit = None
+    if req.use_memory and memory_ttl_days > 0:
+        memory_hit = await search_memory(req.question, max_age_days=memory_ttl_days)
+
+    if memory_hit:
+        log.info("Memory HIT for %r (sim=%.3f hits=%d)",
+                 req.question[:60], memory_hit["similarity"], memory_hit["hit_count"])
+        return {
+            "job_id":               memory_hit["source_job_id"] or "memory",
+            "question":             req.question,
+            "models":               models,
+            "synthesis_model":      memory_hit.get("source_type", "memory"),
+            "responses":            [],
+            "narrative":            memory_hit["content"],
+            "synthesis_thinking":   "",
+            "synthesis_duration_ms": 0,
+            "synthesis_tokens_in":  0,
+            "synthesis_tokens_out": 0,
+            "fetch_job_id":         "",
+            "fetch_sources_count":  0,
+            "fetch_context_preview": "",
+            # Memory metadata
+            "from_memory":          True,
+            "memory_id":            memory_hit["id"],
+            "memory_similarity":    memory_hit["similarity"],
+            "memory_hit_count":     memory_hit["hit_count"],
+            "memory_created_at":    memory_hit["created_at"],
+            "intent":               intent,
+        }
+
+    # ── Step 3: Direct path (single model, no quorum) ─────────────────────────
+    if not needs_quorum:
+        log.info("Direct path for %r (intent=%s)", req.question[:60], intent)
+        job_id = str(uuid.uuid4())
+        async with httpx.AsyncClient() as client:
+            direct_result = await _chat(client, DIRECT_MODEL, req.question, timeout=60)
+
+        narrative = direct_result["content"]
+
+        # Persist a lightweight job record so history still works
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO quorum_jobs (id, question, models, status) "
+                "VALUES (%s,%s,%s,'complete')",
+                (job_id, req.question, [DIRECT_MODEL]),
+            )
+            cur.execute(
+                """INSERT INTO quorum_responses
+                   (job_id, model, response, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (job_id, DIRECT_MODEL, narrative,
+                 direct_result.get("duration_ms"),
+                 direct_result.get("tokens_in"),
+                 direct_result.get("tokens_out")),
+            )
+            cur.execute(
+                """INSERT INTO quorum_narratives
+                   (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (job_id, DIRECT_MODEL, narrative, "",
+                 direct_result.get("duration_ms"),
+                 direct_result.get("tokens_in"),
+                 direct_result.get("tokens_out")),
+            )
+            conn.commit()
+            cur.close()
+
+        # Store in memory (direct facts have very long TTL)
+        await store_synthesis(
+            query=req.question,
+            content=narrative,
+            source_job_id=job_id,
+            source_type="direct",
+            intent=intent,
+            memory_ttl_days=memory_ttl_days,
+        )
+
+        return {
+            "job_id":               job_id,
+            "question":             req.question,
+            "models":               [DIRECT_MODEL],
+            "synthesis_model":      DIRECT_MODEL,
+            "responses":            [{"model": DIRECT_MODEL, "content": narrative,
+                                      **{k: direct_result.get(k) for k in
+                                         ("duration_ms", "tokens_in", "tokens_out")}}],
+            "narrative":            narrative,
+            "synthesis_thinking":   "",
+            "synthesis_duration_ms": direct_result.get("duration_ms"),
+            "synthesis_tokens_in":  direct_result.get("tokens_in"),
+            "synthesis_tokens_out": direct_result.get("tokens_out"),
+            "fetch_job_id":         "",
+            "fetch_sources_count":  0,
+            "fetch_context_preview": "",
+            "from_memory":          False,
+            "direct_path":          True,
+            "intent":               intent,
+        }
+
+    # ── Step 4: Full quorum path ───────────────────────────────────────────────
+    job_id = str(uuid.uuid4())
+
     fetch_job_id        = ""
     fetch_context       = ""
     fetch_sources_count = 0
@@ -258,7 +409,6 @@ async def submit_quorum_sync(req: QuorumRequest):
         if fetch_context:
             fetch_sources_count = fetch_context.count("\n--- ")
 
-    # ── Quorum phase ──────────────────────────────────────────────────────────
     used_synthesis_model = req.synthesis_model or SYNTHESIS_MODEL
 
     with get_db() as conn:
@@ -293,6 +443,17 @@ async def submit_quorum_sync(req: QuorumRequest):
         conn.commit()
         cur.close()
 
+    # Store synthesis in memory (news TTL=1d, reference TTL=30d, etc.)
+    if memory_ttl_days > 0 and result.get("narrative"):
+        await store_synthesis(
+            query=req.question,
+            content=result["narrative"],
+            source_job_id=job_id,
+            source_type="synthesis",
+            intent=intent,
+            memory_ttl_days=memory_ttl_days,
+        )
+
     return {
         "job_id":                  job_id,
         "question":                req.question,
@@ -307,6 +468,9 @@ async def submit_quorum_sync(req: QuorumRequest):
         "fetch_job_id":            fetch_job_id,
         "fetch_sources_count":     fetch_sources_count,
         "fetch_context_preview":   fetch_context[:500] if fetch_context else "",
+        "from_memory":             False,
+        "direct_path":             False,
+        "intent":                  intent,
     }
 
 

@@ -34,7 +34,7 @@ SOURCE_MAP: dict[Intent, List[str]] = {
     "reference": ["wiki", "web_crawl"],
     "logs":      ["log_analysis"],
     "network":   ["network_scan"],
-    "direct":    ["web_fetch"],
+    "direct":    [],          # no fetch — answered from model knowledge / memory
 }
 
 DEPTH_SECONDS: dict[Depth, int] = {
@@ -42,6 +42,24 @@ DEPTH_SECONDS: dict[Depth, int] = {
     "standard": 120,
     "deep":     600,
     "custom":   0,          # caller sets time_limit_seconds manually
+}
+
+# How long memory entries are considered fresh for each intent type
+MEMORY_TTL_DAYS: dict[Intent, int] = {
+    "direct":    365,   # math/constants — essentially permanent
+    "reference":  30,   # encyclopedic — stable but can change
+    "news":        1,   # current events — stale within a day
+    "logs":        0,   # ephemeral — don't cache
+    "network":     0,   # ephemeral — don't cache
+}
+
+# Whether a quorum (multi-model debate) is needed for this intent
+NEEDS_QUORUM: dict[Intent, bool] = {
+    "direct":    False,  # single correct answer, no bias possible
+    "reference": True,
+    "news":      True,
+    "logs":      False,  # deterministic analysis
+    "network":   False,  # deterministic scan
 }
 
 
@@ -53,7 +71,9 @@ class QueryPacket(BaseModel):
     depth:              Depth
     time_limit_seconds: int
     keywords:           List[str]
-    notes:              str = ""  # optimizer observations for the caller
+    notes:              str = ""    # optimizer observations for the caller
+    needs_quorum:       bool = True # False for direct/factual queries
+    memory_ttl_days:    int  = 7    # how long a cached synthesis stays fresh
 
 
 _SYSTEM_PROMPT = """\
@@ -72,11 +92,14 @@ JSON schema:
 }
 
 Intent definitions:
-  news      — current events, recent happenings, breaking stories
-  reference — historical facts, encyclopedic knowledge, how-things-work
+  direct    — single-answer factual query: math, constants, definitions, conversions,
+              spelling. These have ONE correct answer with NO bias or debate possible.
+              Examples: "what is 2+2", "speed of light", "how do you spell necessary",
+              "what year did WW2 end". No web fetch needed. Answer from model knowledge.
+  news      — current events, recent happenings, breaking stories, today/this week
+  reference — historical facts, encyclopedic knowledge, how-things-work, science concepts
   logs      — error logs, stack traces, debug output, application errors
   network   — port scans, service discovery, network topology queries
-  direct    — a specific URL or RSS feed was given; fetch it directly
 
 Depth guidelines:
   quick    — a factual lookup that a single source answers
@@ -134,6 +157,8 @@ async def optimize(query: str, force_depth: Optional[Depth] = None,
             time_limit_seconds=tls,
             keywords=data.get("keywords", [])[:10],
             notes=data.get("notes", ""),
+            needs_quorum=NEEDS_QUORUM.get(intent, True),
+            memory_ttl_days=MEMORY_TTL_DAYS.get(intent, 7),
         )
 
     except Exception as exc:
@@ -148,4 +173,6 @@ async def optimize(query: str, force_depth: Optional[Depth] = None,
             time_limit_seconds=time_limit_seconds or DEPTH_SECONDS[depth],
             keywords=query.split()[:10],
             notes=f"Optimizer unavailable — using safe defaults ({exc})",
+            needs_quorum=True,
+            memory_ttl_days=7,
         )

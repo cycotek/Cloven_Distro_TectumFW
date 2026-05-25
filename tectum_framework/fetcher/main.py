@@ -243,6 +243,22 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/classify")
+async def classify_query(req: FetchRequest):
+    """
+    Run the optimizer only — no crawl, no fetch.
+    Returns the QueryPacket so the API can decide routing
+    (memory check, needs_quorum, memory_ttl_days) before committing
+    to the full fetch pipeline.
+    """
+    packet: QueryPacket = await optimize(
+        req.query,
+        force_depth=req.mode,
+        time_limit_seconds=req.time_limit_seconds,
+    )
+    return packet.model_dump()
+
+
 @app.post("/fetch", status_code=202)
 async def submit_fetch(req: FetchRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
