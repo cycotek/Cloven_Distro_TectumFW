@@ -293,35 +293,29 @@ async function checkHealth() {
 checkHealth();
 setInterval(checkHealth, 30000);
 
-// ── Load config + available models ────────────────────────────────────────
+// ── Load models via server-split endpoint ──────────────────────────────────
 let configSynthModel = '';
 
 async function loadModels() {
   try {
-    // Fetch config and models in parallel
-    const [modelsRes, configRes] = await Promise.all([
-      fetch('/models'),
-      fetch('/config'),
-    ]);
-    const modelsData = await modelsRes.json();
-    const configData = await configRes.json();
+    const res = await fetch('/models/split');
+    const data = await res.json();
 
-    availableModels = (modelsData.models || []).map(m => m.name);
-    configSynthModel = configData.synthesis_model || '';
+    // Server already removed the synthesis model from contributors — use as-is
+    configSynthModel = data.synthesis_model || '';
+    availableModels = data.all_models || [];
 
-    renderContributorChips();
-    renderSynthSelect();
+    renderContributorChips(data.contributors || []);
+    renderSynthSelect(data.all_models || [], configSynthModel);
   } catch {
     document.getElementById('contributor-chips').innerHTML =
       '<span style="color:var(--red);font-size:12px">Could not reach Ollama</span>';
   }
 }
 
-function renderContributorChips() {
+function renderContributorChips(contributors) {
   const container = document.getElementById('contributor-chips');
   container.innerHTML = '';
-  // Exclude the current synthesis model from contributors
-  const contributors = availableModels.filter(m => m !== currentSynthModel());
   if (!contributors.length) {
     container.innerHTML = '<span style="color:var(--text-muted);font-size:12px">No contributor models available</span>';
     return;
@@ -337,18 +331,22 @@ function renderContributorChips() {
   });
 }
 
-function renderSynthSelect() {
+function renderSynthSelect(allModels, currentSynth) {
   const sel = document.getElementById('synth-select');
   sel.innerHTML = '';
-  availableModels.forEach(m => {
+  allModels.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m;
     opt.textContent = m;
-    if (m === configSynthModel) opt.selected = true;
+    if (m === currentSynth) opt.selected = true;
     sel.appendChild(opt);
   });
-  // When synthesis model changes, re-render contributors to exclude new selection
-  sel.addEventListener('change', renderContributorChips);
+  // When user changes synthesis model, re-fetch split so server recomputes contributors
+  sel.addEventListener('change', async function() {
+    const chosen = this.value;
+    const contributors = availableModels.filter(m => m !== chosen);
+    renderContributorChips(contributors);
+  });
 }
 
 function currentSynthModel() {

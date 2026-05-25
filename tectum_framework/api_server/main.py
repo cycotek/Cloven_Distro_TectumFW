@@ -122,6 +122,22 @@ async def list_models():
     return resp.json()
 
 
+@app.get("/models/split")
+async def split_models():
+    """Returns all models pre-split into contributor pool and synthesis candidates.
+    The current SYNTHESIS_MODEL is excluded from contributors automatically."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{OLLAMA_HOST}/api/tags", timeout=10)
+        resp.raise_for_status()
+    all_models = [m["name"] for m in resp.json().get("models", [])]
+    contributors = [m for m in all_models if m != SYNTHESIS_MODEL]
+    return {
+        "contributors": contributors,
+        "all_models": all_models,
+        "synthesis_model": SYNTHESIS_MODEL,
+    }
+
+
 @app.get("/quorum/history")
 def get_history(limit: int = Query(default=50, le=200)):
     with get_db() as conn:
