@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import time
 from typing import List
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 SYNTHESIS_MODEL = os.getenv("SYNTHESIS_MODEL", "deepseek-r1:14b")
@@ -53,8 +56,9 @@ async def _query_model(client: httpx.AsyncClient, model: str, question: str) -> 
     try:
         result = await _chat(client, model, question, timeout=240)
     except Exception as exc:
+        log.warning("Model %r failed (%s: %s)", model, type(exc).__name__, exc)
         result = {
-            "content": f"[error from {model}: {exc}]",
+            "content": f"[error from {model}: {type(exc).__name__}: {exc}]",
             "duration_ms": 0,
             "tokens_in": 0,
             "tokens_out": 0,
@@ -137,10 +141,15 @@ async def run_quorum(question: str, models: List[str], synthesis_model: str = ""
     contributor_prompt = _build_contributor_prompt(question, fetch_context)
 
     async with httpx.AsyncClient() as client:
-        # Parallel fan-out — each model gets the context-enriched prompt
-        responses: List[dict] = await asyncio.gather(
-            *[_query_model(client, m, contributor_prompt) for m in models]
-        )
+        # Sequential fan-out — Ollama serialises on a single GPU anyway.
+        # Running in parallel means all requests race for the same GPU; the
+        # ones queued behind model-1 exhaust their httpx timeout before they
+        # even start.  Sequential execution gives each model its own full
+        # 240 s window and guarantees all responses arrive.
+        responses: List[dict] = []
+        for m in models:
+            log.info("Querying contributor: %s", m)
+            responses.append(await _query_model(client, m, contributor_prompt))
 
         # Build synthesis prompt with full context
         responses_block = "\n\n".join(
