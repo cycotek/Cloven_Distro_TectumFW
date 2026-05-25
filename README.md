@@ -89,7 +89,7 @@ Navigate to `http://localhost:8000` to open the TectumFW interface. Everything i
 ### The Query Panel
 
 ![Query Panel](assets/screenshots/ui_query_panel.png)
-> *Screenshot: the main input area with model chips, synthesis selector, Research Mode toggle, and Run Quorum button.*
+> *The query panel — question input, contributor chips (llama3.2:3b, qwen2.5:7b, mistral-nemo:12b), deepseek-r1:14b synthesis selector, Research Mode toggle with Quick/Standard/Deep depth, and Run Quorum button.*
 
 **Question box** — type your question here. Any length is supported; the optimizer reads the full text to classify intent before routing.
 
@@ -106,7 +106,7 @@ Navigate to `http://localhost:8000` to open the TectumFW interface. Everything i
 ### Status Bar
 
 ![Status Bar](assets/screenshots/ui_status_bar.png)
-> *Screenshot: the animated status bar showing "Checking memory, classifying..." during a request.*
+> *The status bar mid-request — spinner, teal QUORUM badge, and "Checking memory, classifying…" phase text.*
 
 While a request is running, a status bar appears below the query panel showing the current phase: memory check, classification, fetch (teal highlight when fetcher is active), or quorum inference.
 
@@ -125,18 +125,18 @@ Every completed result shows a badge row indicating how it was served:
 | `⬡ NEWS` | Full quorum ran with auto-fetched live context |
 | `⬡ QUORUM ×3` | N contributor models ran in parallel |
 
-![Direct path badges](assets/screenshots/ui_badges_direct.png)
-> *Screenshot: `⬡ DIRECT` + `→ DIRECT` badges on a speed-of-light query answered by llama3.2:3b in ~3s.*
+![Memory hit result](assets/screenshots/ui_full_memory.png)
+> *`⬡ DIRECT` + `⚡ FROM MEMORY` — "what is the speed of light" served from semantic memory cache at 100% match, cached 47 minutes ago, served 3 times. Zero inference cost.*
 
 ![Memory hit badges](assets/screenshots/ui_badges_memory.png)
-> *Screenshot: `⬡ DIRECT` + `⚡ FROM MEMORY` badges on a paraphrase query ("how fast does light travel") served instantly from cache at 84.6% similarity.*
+> *Badge row close-up: `⬡ DIRECT` confirms immutable-fact intent; `⚡ FROM MEMORY` confirms the answer was pulled from pgvector, not from any model.*
 
 ---
 
 ### Memory Hit Panel
 
 ![Memory hit panel](assets/screenshots/ui_memory_hit.png)
-> *Screenshot: the memory meta bar showing similarity score, cache age, and serve count.*
+> *The memory meta bar: "Served from semantic memory — 100.0% match · cached 47m ago · served 3×". Similarity, freshness, and hit count at a glance.*
 
 When a result comes from semantic memory, a meta bar appears above the synthesis showing:
 - **Match %** — cosine similarity between this query and the cached query (≥ 82% to qualify)
@@ -166,9 +166,9 @@ The synthesis panel shows the final narrative from the synthesis model. When Dee
 ### History Sidebar
 
 ![History sidebar](assets/screenshots/ui_history.png)
-> *Screenshot: the left sidebar showing recent queries with status indicators.*
+> *Full UI view — the JOB HISTORY sidebar lists every query with status (complete / running / error). Header shows "CT Cloven Tectum · Quorum Intelligence" with Dark/Light/Terminal theme switcher and live online indicator. Click any history entry to reload that result.*
 
-The sidebar on the left lists recent jobs pulled from the database. Click any entry to reload that result. Status indicators: `●` complete, `○` running, `✕` error.
+The sidebar lists recent jobs pulled from the database. Click any entry to reload that result. Status pills: green `complete`, yellow `running`, red `error`.
 
 ---
 
@@ -182,16 +182,16 @@ The top-right corner has **Dark / Dim / Light** theme buttons. Preference is sav
 
 To complete the documentation, capture and save the following to `assets/screenshots/`:
 
-| Filename | What to capture |
-|----------|----------------|
-| `ui_query_panel.png` | The query panel before submitting — show all chips, selectors, toggle |
-| `ui_status_bar.png` | The animated status bar mid-request |
-| `ui_badges_direct.png` | A `⬡ DIRECT` + `→ DIRECT` result (submit "what is 2+2") |
-| `ui_badges_memory.png` | A `⚡ FROM MEMORY` result (submit "how fast does light travel" after the speed of light is cached) |
-| `ui_memory_hit.png` | Close-up of the memory meta bar showing sim%, age, serve count |
-| `ui_model_cards.png` | Three model cards from a full quorum run |
-| `ui_synthesis.png` | The synthesis panel with the R1 reasoning block expanded |
-| `ui_history.png` | The history sidebar with a few entries |
+| Filename | Status | What to capture |
+|----------|--------|----------------|
+| `ui_query_panel.png` | ✅ have it | Query panel — chips, selectors, Research Mode toggle |
+| `ui_status_bar.png` | ✅ have it | "QUORUM · Checking memory, classifying…" status bar |
+| `ui_badges_memory.png` | ✅ have it | Badge row close-up — `⬡ DIRECT` + `⚡ FROM MEMORY` |
+| `ui_memory_hit.png` | ✅ have it | Memory meta bar — sim%, age, serve count |
+| `ui_full_memory.png` | ✅ have it | Full view — query panel + badges + cached synthesis |
+| `ui_history.png` | ✅ have it | Full UI with history sidebar |
+| `ui_model_cards.png` | ⏳ needed | Three contributor cards from a full quorum run |
+| `ui_synthesis.png` | ⏳ needed | Synthesis panel with R1 `▶ Reasoning` block expanded |
 
 ---
 
