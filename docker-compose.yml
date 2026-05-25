@@ -58,6 +58,8 @@ services:
     volumes:
       # Mount static files so HTML/CSS/JS changes take effect without rebuild
       - ./tectum_framework/api_server/static:/app/static:ro
+      # Writable mount for screenshot capture tool
+      - ./assets/screenshots:/app/screenshots:rw
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

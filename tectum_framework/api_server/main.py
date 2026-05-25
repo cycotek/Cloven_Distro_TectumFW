@@ -10,8 +10,11 @@ from typing import List, Literal, Optional
 
 import httpx
 import psycopg2
+import base64
+
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from memory import search_memory, store_synthesis
@@ -65,6 +68,19 @@ def get_db():
 # ── App ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Cloven Tectum API", version="0.7.0")
+
+SCREENSHOT_DIR = Path("/app/screenshots")
+
+@app.post("/save-screenshot")
+async def save_screenshot(payload: dict):
+    """Temporary endpoint: receives base64 PNG from browser and writes to screenshots dir."""
+    filename = payload.get("filename", "shot.png")
+    data = payload.get("data", "")
+    if "," in data:
+        data = data.split(",", 1)[1]
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    (SCREENSHOT_DIR / filename).write_bytes(base64.b64decode(data))
+    return {"ok": True, "saved": filename}
 
 _STATIC = Path(__file__).parent / "static"
 
