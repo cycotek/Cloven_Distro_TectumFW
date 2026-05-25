@@ -9,7 +9,7 @@ from typing import List
 import httpx
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-SYNTHESIS_MODEL = os.getenv("SYNTHESIS_MODEL", "mistral-nemo:12b")
+SYNTHESIS_MODEL = os.getenv("SYNTHESIS_MODEL", "deepseek-r1:14b")
 _default_models_str = os.getenv("QUORUM_MODELS", "mistral-nemo:12b,qwen2.5:7b,llama3.2:3b")
 DEFAULT_MODELS: List[str] = [m.strip() for m in _default_models_str.split(",") if m.strip()]
 
