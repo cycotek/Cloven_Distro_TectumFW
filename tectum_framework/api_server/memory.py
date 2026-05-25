@@ -184,13 +184,18 @@ async def store_synthesis(
     confidence:     float = 1.0,
 ) -> Optional[str]:
     """
-    Embed *content* and insert a new memory entry.
+    Embed *query* (not content) and insert a new memory entry.
+
+    We index by the question embedding so that semantically similar future
+    queries ("how fast does light travel" ≈ "what is the speed of light")
+    find this memory via cosine similarity.  The full answer is stored as
+    content and returned on a cache hit.
 
     Returns the new memory row UUID, or None on failure.
     Failures are logged but never raised — a store failure must never
     break the main quorum response flow.
     """
-    vec = await embed(content)
+    vec = await embed(query)   # index by QUERY, not content
     if vec is None:
         log.warning("store_synthesis: embed failed, skipping memory write")
         return None
