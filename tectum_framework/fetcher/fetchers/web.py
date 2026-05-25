@@ -96,9 +96,14 @@ def _extract_text(html: str, base_url: str = "") -> tuple[str, str, list[str]]:
     return title_text, text[:8000], links[:50]  # cap content at 8 k chars, 50 links
 
 
-async def fetch_page(url: str, timeout: float = 15.0) -> dict:
+async def fetch_page(url: str, timeout: float = 15.0,
+                     client: httpx.AsyncClient | None = None) -> dict:
     """
     Fetches a single URL and returns a structured result dict.
+
+    Pass a shared *client* to reuse the connection pool across many fetches —
+    avoids a full TCP+TLS handshake per URL.  If omitted a one-shot client
+    is created (backward-compatible but slower).
 
     {
         "url": str,
@@ -110,10 +115,12 @@ async def fetch_page(url: str, timeout: float = 15.0) -> dict:
         "error": str | None,
     }
     """
+    import asyncio
     lean = _lean_for_url(url)
-    try:
-        async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
-            resp = await client.get(url, timeout=timeout)
+
+    async def _do(c: httpx.AsyncClient) -> dict:
+        try:
+            resp = await c.get(url, timeout=timeout)
             resp.raise_for_status()
             ct = resp.headers.get("content-type", "")
             if "html" not in ct and "xml" not in ct:
@@ -121,13 +128,24 @@ async def fetch_page(url: str, timeout: float = 15.0) -> dict:
                     "url": url, "title": "", "content": resp.text[:4000],
                     "links": [], "lean": lean, "ok": True, "error": None,
                 }
-            title, content, links = _extract_text(resp.text, url)
+            # Run CPU-bound BeautifulSoup parsing in a thread so the event
+            # loop stays free to start other fetches concurrently.
+            title, content, links = await asyncio.to_thread(
+                _extract_text, resp.text, url
+            )
             return {
                 "url": url, "title": title, "content": content,
                 "links": links, "lean": lean, "ok": True, "error": None,
             }
-    except Exception as exc:
-        return {
-            "url": url, "title": "", "content": "", "links": [],
-            "lean": lean, "ok": False, "error": str(exc),
-        }
+        except Exception as exc:
+            return {
+                "url": url, "title": "", "content": "", "links": [],
+                "lean": lean, "ok": False, "error": str(exc),
+            }
+
+    if client is not None:
+        return await _do(client)
+
+    # No shared client supplied — create a one-shot client (slower path)
+    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as c:
+        return await _do(c)

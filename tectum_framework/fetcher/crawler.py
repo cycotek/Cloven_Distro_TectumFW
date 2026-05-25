@@ -137,43 +137,52 @@ async def crawl(
 
     results: List[dict] = []
 
-    # 2. BFS crawl
-    while frontier and len(results) < max_pages:
-        if time.monotonic() > deadline:
-            break
-
-        batch_size = min(5, len(frontier), max_pages - len(results))
-        batch, frontier = frontier[:batch_size], frontier[batch_size:]
-
-        pages = await asyncio.gather(*[fetch_page(url) for url, _ in batch])
-
-        for (url, hop), page in zip(batch, pages):
+    # 2. BFS crawl — share one httpx client across all fetches to reuse the
+    # connection pool (eliminates TCP+TLS setup per URL).  BeautifulSoup HTML
+    # parsing runs in a thread pool inside fetch_page so the event loop stays
+    # free for concurrent HTTP I/O.  Batch size raised from 5 → 10.
+    async with httpx.AsyncClient(
+        headers={"User-Agent": "TectumFetcher/1.0"},
+        follow_redirects=True,
+    ) as shared_client:
+        while frontier and len(results) < max_pages:
             if time.monotonic() > deadline:
                 break
-            if not page["ok"]:
-                continue
 
-            ps = _primary_score(page["content"], hop)
-            rel = _keyword_relevance(url, page["title"], page["content"], keywords)
+            batch_size = min(10, len(frontier), max_pages - len(results))
+            batch, frontier = frontier[:batch_size], frontier[batch_size:]
 
-            results.append({
-                "url":           url,
-                "title":         page["title"],
-                "content":       page["content"],
-                "hop":           hop,
-                "primary_score": ps,
-                "relevance":     rel,
-                "lean":          page["lean"],
-                "ok":            True,
-            })
+            pages = await asyncio.gather(
+                *[fetch_page(url, client=shared_client) for url, _ in batch]
+            )
 
-            # Queue child links if we have hop budget left
-            if hop < max_hops:
-                for link in page.get("links", []):
-                    if (link not in seen_urls and not _is_skippable(link)
-                            and len(frontier) < 100):
-                        seen_urls.add(link)
-                        frontier.append((link, hop + 1))
+            for (url, hop), page in zip(batch, pages):
+                if time.monotonic() > deadline:
+                    break
+                if not page["ok"]:
+                    continue
+
+                ps  = _primary_score(page["content"], hop)
+                rel = _keyword_relevance(url, page["title"], page["content"], keywords)
+
+                results.append({
+                    "url":           url,
+                    "title":         page["title"],
+                    "content":       page["content"],
+                    "hop":           hop,
+                    "primary_score": ps,
+                    "relevance":     rel,
+                    "lean":          page["lean"],
+                    "ok":            True,
+                })
+
+                # Queue child links if we have hop budget left
+                if hop < max_hops:
+                    for link in page.get("links", []):
+                        if (link not in seen_urls and not _is_skippable(link)
+                                and len(frontier) < 100):
+                            seen_urls.add(link)
+                            frontier.append((link, hop + 1))
 
     # Sort: primary_score * relevance desc
     results.sort(key=lambda r: r["primary_score"] * r["relevance"], reverse=True)
