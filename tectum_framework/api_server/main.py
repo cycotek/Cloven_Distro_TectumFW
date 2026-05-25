@@ -48,18 +48,19 @@ _STATIC = Path(__file__).parent / "static"
 class QuorumRequest(BaseModel):
     question: str
     models: Optional[List[str]] = None
+    synthesis_model: Optional[str] = None
 
 
 # ── Background runner ─────────────────────────────────────────────────────────
 
-def _run_quorum_bg(job_id: str, question: str, models: List[str]) -> None:
+def _run_quorum_bg(job_id: str, question: str, models: List[str], synthesis_model: str = "") -> None:
     with get_db() as conn:
         cur = conn.cursor()
         try:
             cur.execute("UPDATE quorum_jobs SET status='running' WHERE id=%s", (job_id,))
             conn.commit()
 
-            result = asyncio.run(run_quorum(question, models))
+            result = asyncio.run(run_quorum(question, models, synthesis_model))
 
             for r in result["responses"]:
                 cur.execute(
@@ -103,6 +104,14 @@ def serve_ui():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/config")
+def get_config():
+    return {
+        "synthesis_model": SYNTHESIS_MODEL,
+        "default_models": DEFAULT_MODELS,
+    }
 
 
 @app.get("/models")
@@ -153,7 +162,7 @@ async def submit_quorum(req: QuorumRequest, background_tasks: BackgroundTasks):
         conn.commit()
         cur.close()
 
-    background_tasks.add_task(_run_quorum_bg, job_id, req.question, models)
+    background_tasks.add_task(_run_quorum_bg, job_id, req.question, models, req.synthesis_model or "")
     return {"job_id": job_id, "status": "pending"}
 
 
@@ -170,7 +179,8 @@ async def submit_quorum_sync(req: QuorumRequest):
         )
         conn.commit()
 
-        result = await run_quorum(req.question, models)
+        used_synthesis_model = req.synthesis_model or SYNTHESIS_MODEL
+        result = await run_quorum(req.question, models, used_synthesis_model)
 
         for r in result["responses"]:
             cur.execute(
@@ -184,7 +194,7 @@ async def submit_quorum_sync(req: QuorumRequest):
             """INSERT INTO quorum_narratives
                (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
                VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-            (job_id, SYNTHESIS_MODEL, result["narrative"],
+            (job_id, used_synthesis_model, result["narrative"],
              result.get("synthesis_thinking", ""),
              result.get("synthesis_duration_ms"),
              result.get("synthesis_tokens_in"),
@@ -198,6 +208,7 @@ async def submit_quorum_sync(req: QuorumRequest):
         "job_id": job_id,
         "question": req.question,
         "models": models,
+        "synthesis_model": used_synthesis_model,
         "responses": result["responses"],
         "narrative": result["narrative"],
         "synthesis_thinking": result.get("synthesis_thinking", ""),

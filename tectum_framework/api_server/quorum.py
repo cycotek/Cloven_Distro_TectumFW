@@ -74,7 +74,7 @@ def _parse_r1(raw: str) -> tuple[str, str]:
     return thinking, answer
 
 
-async def run_quorum(question: str, models: List[str]) -> dict:
+async def run_quorum(question: str, models: List[str], synthesis_model: str = "") -> dict:
     """
     Fan the question out to all models in parallel, then synthesize with the
     designated synthesis model (ideally DeepSeek-R1 for auditable reasoning).
@@ -93,6 +93,8 @@ async def run_quorum(question: str, models: List[str]) -> dict:
             "synthesis_tokens_out": int,
         }
     """
+    synth_model = synthesis_model or SYNTHESIS_MODEL
+
     async with httpx.AsyncClient() as client:
         # Parallel fan-out
         responses: List[dict] = await asyncio.gather(
@@ -112,7 +114,7 @@ async def run_quorum(question: str, models: List[str]) -> dict:
         )
 
         try:
-            synth = await _chat(client, SYNTHESIS_MODEL, synthesis_prompt, timeout=240)
+            synth = await _chat(client, synth_model, synthesis_prompt, timeout=240)
             thinking, narrative = _parse_r1(synth["content"])
             synthesis_duration_ms = synth["duration_ms"]
             synthesis_tokens_in = synth["tokens_in"]

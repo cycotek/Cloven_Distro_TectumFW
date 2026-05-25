@@ -99,7 +99,9 @@ textarea, input { font-family: inherit; }
 .question-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 14px; resize: vertical; min-height: 80px; transition: border-color 0.2s; outline: none; }
 .question-input:focus { border-color: var(--accent); }
 .question-input::placeholder { color: var(--text-muted); }
-.model-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+.model-sections { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.model-section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 6px; }
+.model-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .model-chip { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface2); cursor: pointer; transition: all 0.15s; user-select: none; }
 .model-chip input { display: none; }
 .model-chip.checked { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
@@ -107,6 +109,10 @@ textarea, input { font-family: inherit; }
 .model-chip.checked .dot { background: var(--accent); }
 .model-chip span { font-size: 12px; color: var(--text-muted); }
 .model-chip.checked span { color: var(--text); }
+.synth-select { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; color: var(--text); padding: 5px 28px 5px 12px; font-size: 12px; font-family: inherit; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237d8590'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; transition: border-color 0.15s; outline: none; }
+.synth-select:focus, .synth-select:hover { border-color: var(--accent); }
+.synth-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--accent); border-radius: 20px; background: var(--accent-dim); font-size: 12px; color: var(--text); }
+.synth-badge .synth-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .submit-row { display: flex; gap: 10px; margin-top: 14px; align-items: center; }
 .btn { padding: 8px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; transition: all 0.15s; }
 .btn-primary { background: var(--accent); color: #fff; }
@@ -200,9 +206,19 @@ textarea, input { font-family: inherit; }
     <div class="panel">
       <div class="panel-title">New Quorum</div>
       <textarea class="question-input" id="question" placeholder="Ask a question, paste a log, describe an error…" rows="4"></textarea>
-      <div class="model-row" id="model-row">
-        <span class="section-label" style="margin:0">Models:</span>
-        <!-- populated by JS -->
+      <div class="model-sections">
+        <div>
+          <div class="model-section-label">Quorum Contributors</div>
+          <div class="model-chips" id="contributor-chips">
+            <!-- populated by JS -->
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="model-section-label" style="margin:0">Synthesis Model</div>
+          <select class="synth-select" id="synth-select">
+            <!-- populated by JS -->
+          </select>
+        </div>
       </div>
       <div class="submit-row">
         <button class="btn btn-primary" id="submit-btn" onclick="submitQuorum()">Run Quorum</button>
@@ -277,37 +293,73 @@ async function checkHealth() {
 checkHealth();
 setInterval(checkHealth, 30000);
 
-// ── Load available models ──────────────────────────────────────────────────
+// ── Load config + available models ────────────────────────────────────────
+let configSynthModel = '';
+
 async function loadModels() {
   try {
-    const r = await fetch('/models');
-    const data = await r.json();
-    availableModels = (data.models || []).map(m => m.name);
-    renderModelChips();
+    // Fetch config and models in parallel
+    const [modelsRes, configRes] = await Promise.all([
+      fetch('/models'),
+      fetch('/config'),
+    ]);
+    const modelsData = await modelsRes.json();
+    const configData = await configRes.json();
+
+    availableModels = (modelsData.models || []).map(m => m.name);
+    configSynthModel = configData.synthesis_model || '';
+
+    renderContributorChips();
+    renderSynthSelect();
   } catch {
-    document.getElementById('model-row').innerHTML +=
+    document.getElementById('contributor-chips').innerHTML =
       '<span style="color:var(--red);font-size:12px">Could not reach Ollama</span>';
   }
 }
 
-function renderModelChips() {
-  const row = document.getElementById('model-row');
-  // clear existing chips
-  row.querySelectorAll('.model-chip').forEach(c => c.remove());
-  availableModels.forEach(m => {
+function renderContributorChips() {
+  const container = document.getElementById('contributor-chips');
+  container.innerHTML = '';
+  // Exclude the current synthesis model from contributors
+  const contributors = availableModels.filter(m => m !== currentSynthModel());
+  if (!contributors.length) {
+    container.innerHTML = '<span style="color:var(--text-muted);font-size:12px">No contributor models available</span>';
+    return;
+  }
+  contributors.forEach(m => {
     const chip = document.createElement('label');
     chip.className = 'model-chip checked';
     chip.innerHTML = `<input type="checkbox" value="${m}" checked><div class="dot"></div><span>${m}</span>`;
     chip.querySelector('input').addEventListener('change', function() {
       chip.classList.toggle('checked', this.checked);
     });
-    row.appendChild(chip);
+    container.appendChild(chip);
   });
 }
+
+function renderSynthSelect() {
+  const sel = document.getElementById('synth-select');
+  sel.innerHTML = '';
+  availableModels.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    if (m === configSynthModel) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  // When synthesis model changes, re-render contributors to exclude new selection
+  sel.addEventListener('change', renderContributorChips);
+}
+
+function currentSynthModel() {
+  const sel = document.getElementById('synth-select');
+  return sel ? sel.value : configSynthModel;
+}
+
 loadModels();
 
 function selectedModels() {
-  return [...document.querySelectorAll('#model-row input:checked')].map(i => i.value);
+  return [...document.querySelectorAll('#contributor-chips input:checked')].map(i => i.value);
 }
 
 // ── History ────────────────────────────────────────────────────────────────
@@ -367,7 +419,7 @@ async function submitQuorum() {
     const r = await fetch('/quorum', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, models }),
+      body: JSON.stringify({ question: q, models, synthesis_model: currentSynthModel() }),
     });
     const data = await r.json();
     currentJobId = data.job_id;
