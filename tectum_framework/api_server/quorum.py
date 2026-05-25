@@ -141,15 +141,15 @@ async def run_quorum(question: str, models: List[str], synthesis_model: str = ""
     contributor_prompt = _build_contributor_prompt(question, fetch_context)
 
     async with httpx.AsyncClient() as client:
-        # Sequential fan-out — Ollama serialises on a single GPU anyway.
-        # Running in parallel means all requests race for the same GPU; the
-        # ones queued behind model-1 exhaust their httpx timeout before they
-        # even start.  Sequential execution gives each model its own full
-        # 240 s window and guarantees all responses arrive.
-        responses: List[dict] = []
-        for m in models:
-            log.info("Querying contributor: %s", m)
-            responses.append(await _query_model(client, m, contributor_prompt))
+        # Parallel fan-out — requires OLLAMA_NUM_PARALLEL=3 and
+        # OLLAMA_MAX_LOADED_MODELS=4 set on the Ollama container so it keeps
+        # all contributor models resident in VRAM and processes them concurrently.
+        # Each request gets 240s; with parallel execution total wall time equals
+        # the slowest single model rather than the sum of all models.
+        log.info("Fan-out to %d contributors: %s", len(models), models)
+        responses: List[dict] = await asyncio.gather(
+            *[_query_model(client, m, contributor_prompt) for m in models]
+        )
 
         # Build synthesis prompt with full context
         responses_block = "\n\n".join(

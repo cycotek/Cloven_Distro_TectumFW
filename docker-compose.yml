@@ -7,6 +7,14 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      # Allow multiple models to stay resident in VRAM simultaneously.
+      # VRAM budget: llama3.2:3b ~2GB | qwen2.5:7b ~5GB | mistral-nemo:12b ~8GB
+      #              deepseek-r1:14b ~10GB  →  all four ~25GB total
+      # Lower MAX_LOADED_MODELS if you run out of VRAM (models will swap to CPU).
+      - OLLAMA_NUM_PARALLEL=3
+      - OLLAMA_MAX_LOADED_MODELS=4
+      - OLLAMA_KEEP_ALIVE=30m
     deploy:
       resources:
         reservations:
