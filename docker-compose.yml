@@ -1,6 +1,6 @@
 services:
   cloven_tectum_db:
-    image: ankane/pgvector:latest
+    image: pgvector/pgvector:pg17
     container_name: cloven_tectum_db
     restart: always
     environment:
@@ -11,6 +11,7 @@ services:
       - "${DATABASE_PORT}:5432"
     volumes:
       - cloven_db_data:/var/lib/postgresql/data
+      - ./tectum_framework/api_server/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER}"]
       interval: 10s
@@ -25,63 +26,18 @@ services:
       - .env
     depends_on:
       cloven_tectum_db:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "${API_PORT}:8000"
     volumes:
       - ./tectum_framework/api_server:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
 
-  cloven_tectum_ollama:
-    build: ./tectum_framework/ollama
-    container_name: cloven_tectum_ollama
-    restart: always
-    ports:
-      - "${OLLAMA_PORT}:11434"
-    environment:
-      OLLAMA_HOST: 0.0.0.0:11434
-    volumes:
-      - ollama_models:/root/.ollama
-
-  cloven_tectum_webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: cloven_tectum_webui
-    restart: always
-    depends_on:
-      cloven_tectum_ollama:
-        condition: service_started
-    environment:
-      - OLLAMA_HOST=http://cloven_tectum_ollama:11434
-    ports:
-      - "${WEBUI_PORT}:8080"
-    volumes:
-      - open-webui-data:/app/backend/data
-
-  cloven_tectum_scraper:
-    build: ./tectum_framework/agents/scraper
-    container_name: cloven_tectum_scraper
-    restart: on-failure
-    env_file:
-      - .env
-    depends_on:
-      cloven_tectum_api:
-        condition: service_started
-
-  cloven_tectum_inserter:
-    build: ./tectum_framework/agents/inserter
-    container_name: cloven_tectum_inserter
-    restart: on-failure
-    env_file:
-      - .env
-    depends_on:
-      cloven_tectum_api:
-        condition: service_started
-
 volumes:
   cloven_db_data:
-  ollama_models:
-  open-webui-data:
