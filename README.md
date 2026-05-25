@@ -190,8 +190,8 @@ To complete the documentation, capture and save the following to `assets/screens
 | `ui_memory_hit.png` | ✅ have it | Memory meta bar — sim%, age, serve count |
 | `ui_full_memory.png` | ✅ have it | Full view — query panel + badges + cached synthesis |
 | `ui_history.png` | ✅ have it | Full UI with history sidebar |
-| `ui_model_cards.png` | ⏳ needed | Three contributor cards from a full quorum run |
-| `ui_synthesis.png` | ⏳ needed | Synthesis panel with R1 `▶ Reasoning` block expanded |
+| `ui_model_cards.png` | ✅ have it | Three contributor cards from a full quorum run |
+| `ui_synthesis.png` | ✅ have it | Synthesis panel with R1 `▶ Reasoning` block expanded |
 
 ---
 
