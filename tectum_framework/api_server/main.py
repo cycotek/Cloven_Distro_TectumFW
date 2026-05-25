@@ -27,6 +27,19 @@ _FETCH_TIMEOUT       = 360.0  # max seconds to wait for fetch to complete
 # Fast model for direct (single-answer) queries — skip quorum overhead
 DIRECT_MODEL = os.getenv("DIRECT_MODEL", "llama3.2:3b")
 
+# Embedding-only models to exclude from chat/contributor lists
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+_EMBED_PREFIXES = tuple(
+    p.split(":")[0].lower()
+    for p in [EMBED_MODEL, "nomic-embed-text", "mxbai-embed", "all-minilm",
+              "snowflake-arctic-embed", "bge-", "e5-"]
+)
+
+def _is_chat_model(name: str) -> bool:
+    """Return False for known embedding-only models."""
+    n = name.lower()
+    return not any(n.startswith(p) for p in _EMBED_PREFIXES)
+
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -218,7 +231,8 @@ async def split_models():
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{OLLAMA_HOST}/api/tags", timeout=10)
         resp.raise_for_status()
-    all_models = [m["name"] for m in resp.json().get("models", [])]
+    all_models   = [m["name"] for m in resp.json().get("models", [])
+                    if _is_chat_model(m["name"])]
     contributors = [m for m in all_models if m != SYNTHESIS_MODEL]
     return {
         "contributors":    contributors,

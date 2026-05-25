@@ -752,7 +752,7 @@ function setLoading(on, fetchPhase) {
 function setStatusText(phase, html) {
   const bar = document.getElementById('status-bar');
   bar.classList.toggle('fetch-phase', phase === 'fetch');
-  document.getElementById('spinner').classList.toggle('teal', phase === 'fetch');
+  document.getElementById('status-spinner').classList.toggle('teal', phase === 'fetch');
   document.getElementById('status-text').innerHTML = html;
 }
 
