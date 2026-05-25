@@ -53,6 +53,25 @@ services:
       timeout: 10s
       retries: 5
 
+  cloven_tectum_fetcher:
+    build: ./tectum_framework/fetcher
+    container_name: cloven_tectum_fetcher
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      cloven_tectum_db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    ports:
+      - "${FETCHER_PORT:-8001}:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
 volumes:
   ollama_data:
   cloven_db_data:
