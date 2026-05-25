@@ -51,7 +51,7 @@ async def _chat(client: httpx.AsyncClient, model: str, prompt: str, timeout: flo
 async def _query_model(client: httpx.AsyncClient, model: str, question: str) -> dict:
     """Query one model, return {model, content, duration_ms, tokens_in, tokens_out}. Never raises."""
     try:
-        result = await _chat(client, model, question)
+        result = await _chat(client, model, question, timeout=240)
     except Exception as exc:
         result = {
             "content": f"[error from {model}: {exc}]",
