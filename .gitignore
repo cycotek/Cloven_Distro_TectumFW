@@ -71,3 +71,8 @@ Thumbs.db
 
 # Ignore readme auto-gen artifacts
 README_autogen.md
+
+# Committed templates (re-included despite the broad patterns above — no secrets)
+!.env.example
+!.env.standalone.example
+!docker-compose.standalone.yml
