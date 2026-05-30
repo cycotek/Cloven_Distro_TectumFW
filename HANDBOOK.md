@@ -177,6 +177,71 @@ docker logs -f cloven_ollama
 
 ---
 
+## Standalone / MCP flavor — NAS deployment
+
+> The bundled stack above runs Ollama + GPU locally. The **standalone** flavor
+> (`docker-compose.standalone.yml` / `docker-compose.synology.yml`) drops Ollama,
+> attaches to an existing one via `OLLAMA_HOST`, adds an MCP server, and runs on
+> non-standard ports (8800/8801/8802/55432).
+
+**Live deployment:** Syn1 (DS2418+), `/volume1/docker/tectum`, attached to Ollama
+on `192.168.1.232`. MCP endpoint for any agent: `http://192.168.1.173:8802/mcp`.
+
+```bash
+# Connect (key-based, passwordless; 10G link, or 192.168.1.173 on 1G)
+ssh -i ~/.ssh/tectum_deploy cloven@10.79.45.122
+
+# Manage the stack (docker needs sudo; cloven is in administrators w/ NOPASSWD)
+cd /volume1/docker/tectum
+sudo /usr/local/bin/docker compose -f docker-compose.synology.yml ps
+sudo /usr/local/bin/docker compose -f docker-compose.synology.yml logs -f cloven_tectum_api
+sudo /usr/local/bin/docker compose -f docker-compose.synology.yml restart cloven_tectum_api
+sudo /usr/local/bin/docker compose -f docker-compose.synology.yml down        # stop
+sudo /usr/local/bin/docker compose -f docker-compose.synology.yml up -d        # start
+sudo /usr/local/bin/docker compose -f docker-compose.synology.yml pull && \
+sudo /usr/local/bin/docker compose -f docker-compose.synology.yml up -d        # update from GHCR
+```
+
+**DSM quirks (bit us, documented so they don't again):**
+- DSM `sshd` has **no SFTP subsystem** → `scp` fails. Transfer files with `cat local | ssh host "cat > remote"`.
+- The DB self-initializes — the API applies the idempotent `schema.sql` on startup, so **no schema bind mount** is needed for pull-only deploys.
+- `host.docker.internal` is wired for Ollama-on-same-host; for a remote Ollama (like `.232`) it's just unused.
+
+## CI — publishing images (GitHub Actions)
+
+`.github/workflows/publish-images.yml` builds the 3 service images and pushes them
+to GHCR (`ghcr.io/cycotek/tectum-{api,fetcher,mcp}`) on push to `main` /
+`standalone-mcp` and on `v*` tags. Publishing uses the Action's own `GITHUB_TOKEN`.
+
+```bash
+gh run list --workflow=publish-images.yml      # see runs
+gh run watch <run-id> --exit-status            # follow live
+gh run view <run-id> --log                     # read logs
+gh workflow run publish-images.yml             # trigger manually (workflow_dispatch)
+gh api user/packages/container/tectum-api/versions --jq '.[].metadata.container.tags'
+```
+
+- **Token scopes** to *push* a workflow file: classic PAT needs `repo` **+ `workflow`**
+  (`repo` alone can trigger/view but not push `.github/workflows/*`). Check with `gh auth status`.
+- **Tags**: every build tags `<branch-name>` + `sha-<short>`. `:latest` is created
+  **only on `main`** (the convention — `latest` tracks the stable branch).
+- **Pulling on the NAS**: packages are public → anonymous `docker pull` works. If
+  on a feature branch, set `IMAGE_TAG=<branch>` in the NAS `.env`; once on `main`,
+  the default `${IMAGE_TAG:-latest}` just works.
+
+## Docs philosophy — where help lives
+
+Two kinds of help, opposite hosting:
+- **Usage help** (badges, modes, model toggles) → **in-app Help panel**. You only
+  need it when the app is up, so it can live in the GUI.
+- **Recovery / runbook** (this file: restart, logs, redeploy, `gh`/`ssh`/`docker`)
+  → **the repo**, because it must be reachable when the service is *down*. An
+  in-app help screen is useless during an outage; GitHub still renders HANDBOOK.md.
+
+So: the GUI Help should explain usage and then **link out to HANDBOOK.md** (and the
+`/health` endpoints) for the "it's broken, now what" path — never bury recovery
+steps only inside the running app.
+
 ## Known Quirks
 
 - **R1 reasoning blocks**: DeepSeek-R1 doesn't always emit `<think>` tags. When `synthesis_thinking` is empty the UI shows no reasoning block — this is expected, not a bug.
