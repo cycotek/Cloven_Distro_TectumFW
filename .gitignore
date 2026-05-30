@@ -76,3 +76,4 @@ README_autogen.md
 !.env.example
 !.env.standalone.example
 !docker-compose.standalone.yml
+!docker-compose.synology.yml

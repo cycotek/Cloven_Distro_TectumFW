@@ -71,6 +71,40 @@ app = FastAPI(title="Cloven Tectum API", version="0.7.0")
 
 SCREENSHOT_DIR = Path("/app/screenshots")
 
+
+@app.on_event("startup")
+def _bootstrap_schema() -> None:
+    """
+    Apply the (idempotent) schema on startup so the database self-initializes.
+
+    This removes the need to bind-mount schema.sql into the Postgres container,
+    which matters for pull-only deploys like Synology Container Manager where no
+    repo is present on the host. schema.sql is baked into this image (COPY ./ /app)
+    and every statement is IF NOT EXISTS, so running it repeatedly is a no-op.
+    Best-effort: a failure is logged, never fatal — the bundled compose also
+    applies it via docker-entrypoint-initdb.d.
+    """
+    import time
+
+    schema_path = Path(__file__).parent / "schema.sql"
+    if not schema_path.exists():
+        log.warning("schema bootstrap: %s not found, skipping", schema_path)
+        return
+    sql = schema_path.read_text()
+    for attempt in range(1, 11):
+        try:
+            with get_db() as conn:
+                cur = conn.cursor()
+                cur.execute(sql)
+                conn.commit()
+                cur.close()
+            log.info("schema bootstrap: applied on attempt %d", attempt)
+            return
+        except Exception as exc:  # DB may still be warming up — retry a few times
+            log.warning("schema bootstrap attempt %d failed: %s", attempt, exc)
+            time.sleep(3)
+    log.error("schema bootstrap: gave up after retries (DB unreachable?)")
+
 @app.post("/save-screenshot")
 async def save_screenshot(payload: dict):
     """Temporary endpoint: receives base64 PNG from browser and writes to screenshots dir."""

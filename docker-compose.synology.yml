@@ -1,42 +1,32 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# TectumFW Standalone — MCP service flavor
+# TectumFW Standalone — Synology Container Manager / pull-only deploy
 #
-# Differences from the bundled docker-compose.yml:
-#   • NO Ollama service. This stack attaches to an Ollama instance you ALREADY
-#     run (bare metal, another box, or the Docker host). Set OLLAMA_HOST in
-#     .env to point at it. The model list is scraped live from /api/tags, so it
-#     picks up whatever models are installed there.
-#   • Adds cloven_tectum_mcp — an MCP server exposing tectum_ask / tectum_fetch
-#     / tectum_recall over streamable-HTTP, so this stack joins your MCP fleet.
-#   • Non-standard host port band (88xx / 555xx) to avoid collisions when
-#     dropped onto an existing host (Synology Container Manager, etc.).
-#   • Ships its own pgvector DB by default. To use an EXTERNAL Postgres instead,
-#     point DATABASE_HOST/DATABASE_PORT at it in .env and start only the app
-#     services:  docker compose -f docker-compose.standalone.yml up -d \
-#                  cloven_tectum_api cloven_tectum_fetcher cloven_tectum_mcp
+# Pulls prebuilt amd64 images from GHCR (published by
+# .github/workflows/publish-images.yml). NO build context, NO bind mounts, NO
+# Ollama — paste straight into a Container Manager Project on a DS-series NAS.
 #
-# Usage:
-#   cp .env.standalone.example .env
-#   # edit .env — set OLLAMA_HOST to your Ollama machine
-#   docker compose -f docker-compose.standalone.yml up -d --build
+#   1. cp .env.standalone.example .env   (set OLLAMA_HOST to your Ollama box,
+#                                          e.g. http://192.168.1.232:11434)
+#   2. docker compose -f docker-compose.synology.yml up -d
+#
+# The DB self-initializes: the API applies its idempotent schema on startup, so
+# no schema.sql mount is needed. Host ports are env-driven — map whatever you
+# like (left side); internal ports are fixed.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
   cloven_tectum_db:
     image: pgvector/pgvector:pg17
     container_name: cloven_tectum_db
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${DATABASE_USER}
       POSTGRES_PASSWORD: ${DATABASE_PASS}
       POSTGRES_DB: ${DATABASE_NAME}
     ports:
-      # Host-facing port only. Inside the Docker network Postgres is always 5432,
-      # which is what DATABASE_PORT points the app services at.
       - "${DATABASE_HOST_PORT:-55432}:5432"
     volumes:
       - cloven_db_data:/var/lib/postgresql/data
-      - ./tectum_framework/api_server/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER}"]
       interval: 10s
@@ -44,14 +34,11 @@ services:
       retries: 5
 
   cloven_tectum_api:
-    build: ./tectum_framework/api_server
+    image: ghcr.io/cycotek/tectum-api:${IMAGE_TAG:-latest}
     container_name: cloven_tectum_api
     restart: unless-stopped
     env_file:
       - .env
-    # Lets OLLAMA_HOST=http://host.docker.internal:11434 reach an Ollama running
-    # on the Docker host. For Ollama on a different machine, set OLLAMA_HOST to
-    # that machine's IP and this mapping is simply unused.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -59,17 +46,14 @@ services:
         condition: service_healthy
     ports:
       - "${API_PORT:-8800}:8000"
-    volumes:
-      - ./tectum_framework/api_server/static:/app/static:ro
     healthcheck:
-      # python (not curl) — the slim image ships no curl
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
       interval: 30s
       timeout: 10s
       retries: 5
 
   cloven_tectum_fetcher:
-    build: ./tectum_framework/fetcher
+    image: ghcr.io/cycotek/tectum-fetcher:${IMAGE_TAG:-latest}
     container_name: cloven_tectum_fetcher
     restart: unless-stopped
     env_file:
@@ -82,20 +66,18 @@ services:
     ports:
       - "${FETCHER_PORT:-8801}:8001"
     healthcheck:
-      # python (not curl) — the slim image ships no curl
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)\""]
       interval: 30s
       timeout: 10s
       retries: 5
 
   cloven_tectum_mcp:
-    build: ./tectum_framework/mcp_server
+    image: ghcr.io/cycotek/tectum-mcp:${IMAGE_TAG:-latest}
     container_name: cloven_tectum_mcp
     restart: unless-stopped
     environment:
       TECTUM_API_HOST: "http://cloven_tectum_api:8000"
       TECTUM_FETCHER_HOST: "http://cloven_tectum_fetcher:8001"
-      # Internal bind port is fixed at 8802; host port is mapped below.
       MCP_PORT: "8802"
     depends_on:
       cloven_tectum_api:
