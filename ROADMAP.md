@@ -60,6 +60,21 @@ is the differentiator; most local-LLM setups have none of it.
     stale entries. (Cloven may start this in a separate session.)
   - These are mostly read-side: new `/stats` endpoints aggregating existing
     `quorum_responses` / `quorum_narratives` / `tectum_memory` rows, plus a page.
+- [ ] **Component health panel** — the UI shows a single online dot today; expand
+  it to a per-component list (API, fetcher, DB/pgvector, MCP, and each Ollama
+  backend) with green/red, last-checked, and latency, so you can see *what* went
+  down, not just *that* something did. Back it with a `/status` endpoint that
+  probes each dependency (DB query, fetcher `/health`, Ollama `/api/tags` +
+  `/api/ps` for loaded models). Per-machine once multiple Ollama backends exist —
+  dovetails with the per-machine stats above. Each red item links to the relevant
+  HANDBOOK.md runbook section ("how to fix it") — usage stays in-app, recovery
+  points to the repo.
+- [ ] **Self-healing / auto-fix (future, gated).** Per-component "diagnose" action
+  that bundles its status + recent logs into a prompt, sends it to an AI (Claude
+  API or a local model), and returns a diagnosis + proposed fix; optional one-click
+  apply → commit. Must be gated behind explicit confirmation and never auto-apply
+  destructive actions (restart = ok; schema/data changes = review first). The
+  agentic endgame: status → diagnosis → fix → commit.
 
 ## Fetcher — faster, distributed backend
 

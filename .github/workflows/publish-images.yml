@@ -9,6 +9,10 @@ on:
   push:
     branches: [main, standalone-mcp]
     tags: ["v*"]
+    # Docs-only changes don't change image contents — skip the rebuild.
+    paths-ignore:
+      - '**.md'
+      - 'assets/**'
   workflow_dispatch:
 
 permissions:
