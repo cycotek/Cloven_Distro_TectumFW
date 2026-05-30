@@ -100,7 +100,16 @@ Today the crawler is single-threaded and capped at a few sources per query
 
 - [ ] Keep README / README.standalone / GitHub description in sync as the above
   lands. The standalone + MCP + Synology story should be reflected in the main
-  README's architecture section, not only in README.standalone.
+  README's architecture section, not only in README.standalone (main README now
+  just has a pointer).
+- [ ] **Reality-check todo:** HANDBOOK.md documents `DELETE /memory/{memory_id}`
+  but **no such endpoint exists** in `api_server/main.py`. Either implement the
+  DELETE route (handy for the pgvector memory browser anyway) or remove the claim
+  from HANDBOOK. (The SQL `DELETE FROM tectum_memory …` workaround is real.)
+- [x] README reality-check pass: fixed theme names (Dark/Light/Terminal, was
+  "Dim"), reframed the screenshots checklist as done, added a standalone/MCP
+  flavor pointer. Verified the claimed UI (badges, R1 reasoning block, memory
+  meta bar, online dot) all actually exist in the code.
 
 ---
 

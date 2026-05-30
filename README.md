@@ -1,8 +1,12 @@
 # Cloven Distro — TectumFW
 
-**TectumFW** and now **TectumFW standalone MCP** (see README.standalone.md) is a self-hosted reasoning layer for your local network. Ask it a question or have your current Main AI on your system query it or use the fetcher system that intelligently takes a query asks itself if it already has the information in it's vectorDB if not it crawls the web for data and it queries the models you have in your ollama library and each of those LLM models independently answer it — one of the models will act as the controller and reads them all and synthesizes a bias-filtered consensus. Which ever you chose removes itself from the quorum. Answers are remembered semantically, so anything asked twice — even phrased differently — comes back instantly from cache. One command to deploy, nothing leaves your network, and any LLM or agent on your network can call it as a tool. The fetcher service alone is a great tool for these aging smaller LLM's we run, with this they can query themselves figure out if they have the current information and if not use fetcher to go out and grab reasoned structured information along with the original question for context and crawl RSS, WIKI, news, but also intelligently understands a question about science and doesn't require long deep searches on imperical data but will pull the latest information on it.
+**TectumFW** — and now **TectumFW Standalone MCP** (see [README.standalone.md](README.standalone.md)) — is a self-hosted reasoning layer for your local network. Ask it a question, or have your main AI query it as a tool. It routes that query intelligently: first it checks whether it already has the answer in its vector DB (semantic memory); on a miss, the fetcher gathers current web context, then the question fans out to the models in your Ollama library. Each model answers independently, and one model you designate acts as the controller — it reads them all and synthesizes a bias-filtered consensus (whichever model you pick for that role removes itself from the quorum). Answers are remembered semantically, so anything asked twice — even phrased differently — comes back instantly from cache. One command to deploy, nothing leaves your network, and any LLM or agent on your network can call it as a tool.
+
+The **fetcher service alone** is a great tool for the aging, smaller LLMs we run: they can figure out whether they already have current information and, if not, use the fetcher to grab reasoned, structured context — the original question plus crawled RSS, Wikipedia, and news. Intent classification keeps it efficient: a settled science question won't trigger a long deep crawl, while a time-sensitive one pulls the latest information.
 
 Beginner-friendly if you have **Docker** and **Python 3.11+** already installed — everything else comes up automatically.
+
+> **Two flavors.** This repo is the all-in-one **bundled** stack (Ollama + GPU included, standard ports) documented below. For a decoupled deployment that attaches to an Ollama you already run and exposes Tectum to agents as an **MCP service** (the shape running on a Synology/NAS), see **[README.standalone.md](README.standalone.md)**.
 
 ---
 
@@ -174,13 +178,13 @@ The sidebar lists recent jobs pulled from the database. Click any entry to reloa
 
 ### Theme Toggle
 
-The top-right corner has **Dark / Dim / Light** theme buttons. Preference is saved to localStorage and restored on next visit.
+The top-right corner has **Dark / Light / Terminal** theme buttons. Preference is saved to localStorage and restored on next visit.
 
 ---
 
-### Screenshots Needed
+### UI Screenshots
 
-To complete the documentation, capture and save the following to `assets/screenshots/`:
+All screenshots above are captured and live in [`assets/screenshots/`](assets/screenshots/):
 
 | Filename | Status | What to capture |
 |----------|--------|----------------|
