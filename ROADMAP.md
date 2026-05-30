@@ -1,0 +1,93 @@
+# TectumFW — Roadmap & Punch List
+
+Living capture of where the project is and where it's going. Organized so any of
+these can be picked up cold in a fresh session.
+
+---
+
+## High-level vision — what this modeling accomplishes
+
+TectumFW is a **bias-and-consensus reasoning layer** over local models. The core
+bet: a single LLM's answer is one sample from one training distribution with one
+set of biases. Fan the same question across several *different* architectures,
+then have a separate model synthesize across them, and you get an answer that is
+**auditable** (you can see where models agreed, disagreed, and diverged) and
+**less captured by any single model's blind spots**.
+
+Layered on top:
+- **Semantic memory (pgvector)** turns the system into an *institutional memory* —
+  it remembers what it concluded and why, matched by meaning, so repeated or
+  rephrased questions are instant and consistent over time.
+- **The fetcher** grounds answers in live sources, breaking the training-cutoff
+  ceiling for time-sensitive questions.
+- **MCP exposure** makes all of this a *tool* any agent on the network can call —
+  Tectum becomes shared reasoning infrastructure, not a one-off app.
+
+Where this goes: a private, air-gapped "research desk" that several agents and
+machines share — consistent, sourced, bias-aware answers with a durable memory of
+everything it has ever concluded. The consensus + memory + provenance combination
+is the differentiator; most local-LLM setups have none of it.
+
+---
+
+## Deployment / repos / git
+
+- **Branch `standalone-mcp`** holds the standalone (Ollama-decoupled) + MCP work.
+  Two commits so far (standalone flavor; Synology/GHCR + self-init schema).
+- **Live on Syn1 (DS2418+)** at `/volume1/docker/tectum` via
+  `docker-compose.synology.yml`, attached to Ollama on `192.168.1.232`.
+  MCP endpoint: `http://192.168.1.173:8802/mcp`.
+- [ ] **Split into its own repo `TectumFW-Standalone`** once the branch settles
+  (the bundled `Cloven_Distro_TectumFW` stays as the GPU all-in-one demo).
+- [ ] **GHCR auto-publish** lands via `.github/workflows/publish-images.yml` on
+  push. Decide package visibility (public to pull on the NAS without auth, or
+  `docker login` on the NAS). Then the NAS can `docker compose pull` to update.
+- [x] Refresh the GitHub repo **description** (was outdated).
+
+## GUI
+
+- [ ] **In-app Help / onboarding** — explain the badges, the 3 tiers, Research
+  Mode depths, contributor vs synthesis models, and the memory hit meta bar.
+  Right now the README carries all of this; the UI assumes prior knowledge.
+- [ ] **Persistent statistics / observability page.** We already capture the raw
+  data (per-model `duration_ms`, `tokens_in`, `tokens_out` on every response and
+  synthesis) — surface it instead of throwing it away:
+  - Raw numbers **per machine / per model** (throughput, tokens, latency, error
+    rate). Multi-Ollama-aware once more than one backend is in play.
+  - Token accounting over time (cost/usage trends, even if "cost" is just compute).
+  - **pgvector memory browser** — list/search/sort stored memories by recency,
+    hit_count, intent, similarity, TTL; see what's cached, what's hot, prune
+    stale entries. (Cloven may start this in a separate session.)
+  - These are mostly read-side: new `/stats` endpoints aggregating existing
+    `quorum_responses` / `quorum_narratives` / `tectum_memory` rows, plus a page.
+
+## Fetcher — faster, distributed backend
+
+Today the crawler is single-threaded and capped at a few sources per query
+(noted in README as a known limit). Target: a **sharded worker pool**, Hadoop-style.
+
+- [ ] **Worker pool / job-shard model** — split a fetch job into independent
+  units of work dispatched to workers, results merged in the context assembler.
+- [ ] **Source-specialized workers** — dedicated fetchers per source class so each
+  can be tuned/rate-limited/authed independently: news wires (AP, Reuters), RSS,
+  Wikipedia, general web. Add more by dropping in a worker.
+- [ ] **"Site of sites" seed discovery** — before crawling, find high-yield hub
+  pages (aggregators, link directories, topic indexes) and crawl *those* deeper,
+  rather than a shallow fan-out from raw query terms.
+- [ ] **Faster backend** generally — async/queue (e.g. a task queue + workers),
+  connection pooling, parallel source classes; the fetcher already runs as its
+  own service on its own port, so it can scale out independently of the API.
+- This dovetails with the README's stated "broker / shard architecture (future)":
+  a persistent fetch service that pre-fetches topics on a schedule and caches
+  assembled context in pgvector for any consumer.
+
+## Docs
+
+- [ ] Keep README / README.standalone / GitHub description in sync as the above
+  lands. The standalone + MCP + Synology story should be reflected in the main
+  README's architecture section, not only in README.standalone.
+
+---
+
+*Some items (stats page, pgvector memory metrics) may be started by Cloven in a
+separate session — this file is the shared brief so that work and this work line up.*
