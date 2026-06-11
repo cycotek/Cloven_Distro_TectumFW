@@ -87,5 +87,19 @@ services:
     ports:
       - "${MCP_PORT:-8802}:8802"
 
+  cloven_tectum_siem_poller:
+    image: ghcr.io/cycotek/tectum-siem-poller:${IMAGE_TAG:-latest}
+    container_name: cloven_tectum_siem_poller
+    restart: unless-stopped
+    environment:
+      UNIFI_MCP_URL:  "${UNIFI_MCP_URL:-http://192.168.1.232:8100}"
+      UNIFI_MCP_KEY:  "${UNIFI_MCP_KEY}"
+      TECTUM_SIEM_URL: "http://cloven_tectum_api:8000/siem"
+      POLL_INTERVAL:  "${SIEM_POLL_INTERVAL:-30}"
+      LOG_LEVEL:      "${LOG_LEVEL:-INFO}"
+    depends_on:
+      cloven_tectum_api:
+        condition: service_healthy
+
 volumes:
   cloven_db_data:
