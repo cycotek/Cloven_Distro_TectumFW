@@ -620,4 +620,216 @@ async def submit_quorum_sync(req: QuorumRequest):
             "job_id":               memory_hit["source_job_id"] or "memory",
             "question":             req.question,
             "models":               models,
-    
+            "synthesis_model":      memory_hit.get("source_type", "memory"),
+            "responses":            [],
+            "narrative":            memory_hit["content"],
+            "synthesis_thinking":   "",
+            "synthesis_duration_ms": 0,
+            "synthesis_tokens_in":  0,
+            "synthesis_tokens_out": 0,
+            "fetch_job_id":         "",
+            "fetch_sources_count":  0,
+            "fetch_context_preview": "",
+            # Memory metadata
+            "from_memory":          True,
+            "memory_id":            memory_hit["id"],
+            "memory_similarity":    memory_hit["similarity"],
+            "memory_hit_count":     memory_hit["hit_count"],
+            "memory_created_at":    memory_hit["created_at"],
+            "intent":               intent,
+        }
+
+    # ── Step 3: Direct path (single model, no quorum) ─────────────────────────
+    if not needs_quorum:
+        log.info("Direct path for %r (intent=%s)", req.question[:60], intent)
+        job_id = str(uuid.uuid4())
+        async with httpx.AsyncClient() as client:
+            direct_result = await _chat(client, DIRECT_MODEL, req.question, timeout=180)
+
+        narrative = direct_result["content"]
+
+        # Persist a lightweight job record so history still works
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO quorum_jobs (id, question, models, status) "
+                "VALUES (%s,%s,%s,'complete')",
+                (job_id, req.question, [DIRECT_MODEL]),
+            )
+            cur.execute(
+                """INSERT INTO quorum_responses
+                   (job_id, model, response, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (job_id, DIRECT_MODEL, narrative,
+                 direct_result.get("duration_ms"),
+                 direct_result.get("tokens_in"),
+                 direct_result.get("tokens_out")),
+            )
+            cur.execute(
+                """INSERT INTO quorum_narratives
+                   (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (job_id, DIRECT_MODEL, narrative, "",
+                 direct_result.get("duration_ms"),
+                 direct_result.get("tokens_in"),
+                 direct_result.get("tokens_out")),
+            )
+            conn.commit()
+            cur.close()
+
+        # Store in memory (direct facts have very long TTL)
+        await store_synthesis(
+            query=req.question,
+            content=narrative,
+            source_job_id=job_id,
+            source_type="direct",
+            intent=intent,
+            memory_ttl_days=memory_ttl_days,
+        )
+
+        return {
+            "job_id":               job_id,
+            "question":             req.question,
+            "models":               [DIRECT_MODEL],
+            "synthesis_model":      DIRECT_MODEL,
+            "responses":            [{"model": DIRECT_MODEL, "content": narrative,
+                                      **{k: direct_result.get(k) for k in
+                                         ("duration_ms", "tokens_in", "tokens_out")}}],
+            "narrative":            narrative,
+            "synthesis_thinking":   "",
+            "synthesis_duration_ms": direct_result.get("duration_ms"),
+            "synthesis_tokens_in":  direct_result.get("tokens_in"),
+            "synthesis_tokens_out": direct_result.get("tokens_out"),
+            "fetch_job_id":         "",
+            "fetch_sources_count":  0,
+            "fetch_context_preview": "",
+            "from_memory":          False,
+            "direct_path":          True,
+            "intent":               intent,
+        }
+
+    # ── Step 4: Full quorum path ───────────────────────────────────────────────
+    job_id = str(uuid.uuid4())
+
+    fetch_job_id        = ""
+    fetch_context       = ""
+    fetch_sources_count = 0
+
+    if req.enable_fetch or auto_fetch:
+        fetch_job_id, fetch_context = await _fetch_context_for_question(
+            req.question, req.fetch_mode
+        )
+        if fetch_context:
+            fetch_sources_count = fetch_context.count("\n--- ")
+
+    used_synthesis_model = req.synthesis_model or SYNTHESIS_MODEL
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO quorum_jobs (id, question, models, status) VALUES (%s,%s,%s,'running')",
+            (job_id, req.question, models),
+        )
+        conn.commit()
+
+        result = await run_quorum(req.question, models, used_synthesis_model, fetch_context)
+
+        for r in result["responses"]:
+            cur.execute(
+                """INSERT INTO quorum_responses
+                   (job_id, model, response, duration_ms, tokens_in, tokens_out)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (job_id, r["model"], r["content"],
+                 r.get("duration_ms"), r.get("tokens_in"), r.get("tokens_out")),
+            )
+        cur.execute(
+            """INSERT INTO quorum_narratives
+               (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (job_id, used_synthesis_model, result["narrative"],
+             result.get("synthesis_thinking", ""),
+             result.get("synthesis_duration_ms"),
+             result.get("synthesis_tokens_in"),
+             result.get("synthesis_tokens_out")),
+        )
+        cur.execute("UPDATE quorum_jobs SET status='complete' WHERE id=%s", (job_id,))
+        conn.commit()
+        cur.close()
+
+    # Store synthesis in memory (news TTL=1d, reference TTL=30d, etc.)
+    if memory_ttl_days > 0 and result.get("narrative"):
+        await store_synthesis(
+            query=req.question,
+            content=result["narrative"],
+            source_job_id=job_id,
+            source_type="synthesis",
+            intent=intent,
+            memory_ttl_days=memory_ttl_days,
+        )
+
+    return {
+        "job_id":                  job_id,
+        "question":                req.question,
+        "models":                  models,
+        "synthesis_model":         used_synthesis_model,
+        "responses":               result["responses"],
+        "narrative":               result["narrative"],
+        "synthesis_thinking":      result.get("synthesis_thinking", ""),
+        "synthesis_duration_ms":   result.get("synthesis_duration_ms"),
+        "synthesis_tokens_in":     result.get("synthesis_tokens_in"),
+        "synthesis_tokens_out":    result.get("synthesis_tokens_out"),
+        "fetch_job_id":            fetch_job_id,
+        "fetch_sources_count":     fetch_sources_count,
+        "fetch_context_preview":   fetch_context[:500] if fetch_context else "",
+        "from_memory":             False,
+        "direct_path":             False,
+        "intent":                  intent,
+    }
+
+
+@app.get("/quorum/{job_id}")
+def get_quorum(job_id: str):
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT question, models, status, created_at FROM quorum_jobs WHERE id=%s", (job_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Job not found")
+        question, models, status, created_at = row
+
+        cur.execute(
+            """SELECT model, response, duration_ms, tokens_in, tokens_out, responded_at
+               FROM quorum_responses WHERE job_id=%s ORDER BY responded_at""",
+            (job_id,),
+        )
+        responses = [
+            {"model": r[0], "content": r[1], "duration_ms": r[2],
+             "tokens_in": r[3], "tokens_out": r[4], "at": str(r[5])}
+            for r in cur.fetchall()
+        ]
+
+        cur.execute(
+            """SELECT narrative, thinking, synthesis_model, duration_ms,
+                      tokens_in, tokens_out, created_at
+               FROM quorum_narratives WHERE job_id=%s""",
+            (job_id,),
+        )
+        nar = cur.fetchone()
+        cur.close()
+
+    return {
+        "job_id":                job_id,
+        "question":              question,
+        "models":                models,
+        "status":                status,
+        "created_at":            str(created_at),
+        "responses":             responses,
+        "narrative":             nar[0] if nar else None,
+        "synthesis_thinking":    nar[1] if nar else "",
+        "synthesis_model":       nar[2] if nar else None,
+        "synthesis_duration_ms": nar[3] if nar else None,
+        "synthesis_tokens_in":   nar[4] if nar else None,
+        "synthesis_tokens_out":  nar[5] if nar else None,
+    }
