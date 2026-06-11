@@ -124,8 +124,20 @@ def poll_once(state: dict) -> dict:
     if data is None:
         return state
 
-    # UniFi MCP may return a list or {"data": [...]}
-    events = data if isinstance(data, list) else data.get("data", data.get("events", []))
+    # UniFi MCP returns {"status":"ok","data":{"count":N,"events":[...]}}
+    # Also handle flat list or {"data":[...]} shapes for forward-compat.
+    if isinstance(data, list):
+        events = data
+    elif isinstance(data, dict):
+        inner = data.get("data", data)
+        if isinstance(inner, dict):
+            events = inner.get("events", inner.get("data", []))
+        elif isinstance(inner, list):
+            events = inner
+        else:
+            events = data.get("events", [])
+    else:
+        events = []
     if not isinstance(events, list):
         log.warning("Unexpected /events response shape: %s", type(events))
         return state
