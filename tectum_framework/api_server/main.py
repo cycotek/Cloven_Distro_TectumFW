@@ -10,6 +10,7 @@ from typing import List, Literal, Optional
 
 import httpx
 import psycopg2
+import psycopg2.extras
 import base64
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
@@ -67,7 +68,7 @@ def get_db():
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Cloven Tectum API", version="0.7.0")
+app = FastAPI(title="Cloven Tectum API", version="0.8.0")
 
 SCREENSHOT_DIR = Path("/app/screenshots")
 
@@ -128,6 +129,247 @@ class QuorumRequest(BaseModel):
     fetch_mode:       Literal["quick", "standard", "deep"] = "standard"
     # Memory — set False to force a fresh run even if cache has a hit
     use_memory:       bool = True
+
+
+# ── SIEM intake ───────────────────────────────────────────────────────────────
+
+# UniFi IPS alert severity follows Suricata: 1=critical, 2=high, 3=medium, 4=low
+_IPS_SEVERITY_MAP = {1: "critical", 2: "high", 3: "medium", 4: "low"}
+
+# Event key prefixes → subsystem
+_SUBSYSTEM_MAP = {
+    "EVT_IPS":  "ids",
+    "EVT_FW":   "firewall",
+    "EVT_AD":   "auth",
+    "EVT_LU":   "auth",
+    "EVT_RM":   "network",
+    "EVT_SW":   "network",
+    "EVT_GW":   "network",
+    "EVT_WU":   "wireless",
+    "EVT_AP":   "wireless",
+}
+
+
+def _parse_siem_event(payload: dict) -> dict:
+    """Extract normalised fields from a raw UniFi webhook payload."""
+    key = payload.get("key", "")
+    msg = payload.get("msg", payload.get("message", ""))
+    site_id = payload.get("site_id", payload.get("site", ""))
+
+    # Subsystem from key prefix
+    subsystem = "unknown"
+    for prefix, sub in _SUBSYSTEM_MAP.items():
+        if key.startswith(prefix):
+            subsystem = sub
+            break
+
+    # Severity: IPS alert has nested alert.severity (Suricata 1-4)
+    alert = payload.get("alert", {})
+    ips_sev = alert.get("severity") if isinstance(alert, dict) else None
+    if ips_sev is not None:
+        severity = _IPS_SEVERITY_MAP.get(int(ips_sev), "medium")
+    elif subsystem == "ids":
+        severity = "high"
+    elif "critical" in msg.lower() or "attack" in msg.lower():
+        severity = "high"
+    else:
+        severity = "info"
+
+    # Network fields — UniFi uses src/dst or src_ip/dst_ip depending on event type
+    src_ip  = payload.get("src_ip",  payload.get("src",  None))
+    dst_ip  = payload.get("dst_ip",  payload.get("dst",  None))
+    src_port = payload.get("src_port", payload.get("spt", None))
+    dst_port = payload.get("dst_port", payload.get("dpt", None))
+    proto   = payload.get("proto", payload.get("protocol", None))
+
+    return {
+        "event_type": key or None,
+        "subsystem":  subsystem,
+        "severity":   severity,
+        "src_ip":     src_ip,
+        "dst_ip":     dst_ip,
+        "src_port":   int(src_port) if src_port is not None else None,
+        "dst_port":   int(dst_port) if dst_port is not None else None,
+        "proto":      str(proto)[:10] if proto else None,
+        "msg":        msg or None,
+        "site_id":    str(site_id) if site_id else None,
+    }
+
+
+@app.post("/siem", status_code=202)
+async def ingest_siem_event(payload: dict, background_tasks: BackgroundTasks):
+    """
+    Receive a UniFi webhook event and store it in siem_events.
+
+    For CRITICAL or HIGH severity events a quorum analysis job is enqueued
+    automatically so the AI pipeline can reason about the threat.
+    """
+    fields = _parse_siem_event(payload)
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO siem_events
+               (event_type, subsystem, severity, src_ip, dst_ip,
+                src_port, dst_port, proto, msg, site_id, raw_payload)
+               VALUES (%(event_type)s, %(subsystem)s, %(severity)s,
+                       %(src_ip)s, %(dst_ip)s,
+                       %(src_port)s, %(dst_port)s, %(proto)s,
+                       %(msg)s, %(site_id)s, %(raw_payload)s)
+               RETURNING id, received_at""",
+            {**fields, "raw_payload": psycopg2.extras.Json(payload)},
+        )
+        event_id, received_at = cur.fetchone()
+        conn.commit()
+        cur.close()
+
+    log.info("SIEM event %s  severity=%s  type=%s  src=%s",
+             event_id, fields["severity"], fields["event_type"], fields["src_ip"])
+
+    # Auto-escalate critical/high to quorum
+    quorum_job_id = None
+    if fields["severity"] in ("critical", "high"):
+        question = (
+            f"Security event [{fields['event_type']}] severity={fields['severity']}: "
+            f"{fields['msg'] or 'no message'}. "
+            f"Source: {fields['src_ip']} → {fields['dst_ip']}. "
+            f"Subsystem: {fields['subsystem']}. "
+            "Analyse the threat, assess impact, and recommend immediate action."
+        )
+        job_id = str(uuid.uuid4())
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO quorum_jobs (id, question, models, status) VALUES (%s, %s, %s, 'pending')",
+                (job_id, question, DEFAULT_MODELS),
+            )
+            cur.execute(
+                "UPDATE siem_events SET quorum_job_id=%s, processed=TRUE WHERE id=%s",
+                (job_id, event_id),
+            )
+            conn.commit()
+            cur.close()
+        background_tasks.add_task(run_quorum, job_id, question, DEFAULT_MODELS, None)
+        quorum_job_id = job_id
+        log.info("SIEM escalated to quorum job %s", job_id)
+
+    return {
+        "accepted":     True,
+        "event_id":     str(event_id),
+        "severity":     fields["severity"],
+        "subsystem":    fields["subsystem"],
+        "received_at":  str(received_at),
+        "quorum_job_id": quorum_job_id,
+    }
+
+
+@app.get("/siem/events")
+def list_siem_events(
+    severity: Optional[str] = Query(None, description="Filter by severity"),
+    subsystem: Optional[str] = Query(None, description="Filter by subsystem"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """Paginated list of SIEM events, newest first."""
+    conditions = []
+    params: list = []
+    if severity:
+        conditions.append("severity = %s")
+        params.append(severity)
+    if subsystem:
+        conditions.append("subsystem = %s")
+        params.append(subsystem)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    params += [limit, offset]
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT id, received_at, event_type, subsystem, severity,
+                       src_ip, dst_ip, src_port, dst_port, proto, msg,
+                       site_id, processed, quorum_job_id
+                FROM siem_events {where}
+                ORDER BY received_at DESC
+                LIMIT %s OFFSET %s""",
+            params,
+        )
+        rows = cur.fetchall()
+        cur.execute(f"SELECT COUNT(*) FROM siem_events {where}", params[:-2] if conditions else [])
+        total = cur.fetchone()[0]
+        cur.close()
+
+    events = [
+        {
+            "id":            str(r[0]),
+            "received_at":   str(r[1]),
+            "event_type":    r[2],
+            "subsystem":     r[3],
+            "severity":      r[4],
+            "src_ip":        str(r[5]) if r[5] else None,
+            "dst_ip":        str(r[6]) if r[6] else None,
+            "src_port":      r[7],
+            "dst_port":      r[8],
+            "proto":         r[9],
+            "msg":           r[10],
+            "site_id":       r[11],
+            "processed":     r[12],
+            "quorum_job_id": str(r[13]) if r[13] else None,
+        }
+        for r in rows
+    ]
+    return {"total": total, "limit": limit, "offset": offset, "events": events}
+
+
+@app.get("/siem/stats")
+def siem_stats():
+    """Counts by severity and subsystem, plus recent high/critical events."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT severity, COUNT(*) FROM siem_events
+               GROUP BY severity ORDER BY COUNT(*) DESC"""
+        )
+        by_severity = {r[0]: r[1] for r in cur.fetchall()}
+
+        cur.execute(
+            """SELECT subsystem, COUNT(*) FROM siem_events
+               GROUP BY subsystem ORDER BY COUNT(*) DESC"""
+        )
+        by_subsystem = {r[0]: r[1] for r in cur.fetchall()}
+
+        cur.execute(
+            """SELECT COUNT(*) FROM siem_events
+               WHERE received_at > NOW() - INTERVAL '1 hour'"""
+        )
+        last_hour = cur.fetchone()[0]
+
+        cur.execute(
+            """SELECT COUNT(*) FROM siem_events
+               WHERE severity IN ('critical','high')
+                 AND received_at > NOW() - INTERVAL '24 hours'"""
+        )
+        high_24h = cur.fetchone()[0]
+
+        cur.execute(
+            """SELECT id, received_at, event_type, severity, src_ip, msg
+               FROM siem_events
+               WHERE severity IN ('critical','high')
+               ORDER BY received_at DESC LIMIT 10"""
+        )
+        recent_critical = [
+            {"id": str(r[0]), "received_at": str(r[1]), "event_type": r[2],
+             "severity": r[3], "src_ip": str(r[4]) if r[4] else None, "msg": r[5]}
+            for r in cur.fetchall()
+        ]
+        cur.close()
+
+    return {
+        "by_severity":      by_severity,
+        "by_subsystem":     by_subsystem,
+        "events_last_hour": last_hour,
+        "high_critical_24h": high_24h,
+        "recent_critical":  recent_critical,
+    }
 
 
 # ── Fetcher helpers ───────────────────────────────────────────────────────────
@@ -378,216 +620,4 @@ async def submit_quorum_sync(req: QuorumRequest):
             "job_id":               memory_hit["source_job_id"] or "memory",
             "question":             req.question,
             "models":               models,
-            "synthesis_model":      memory_hit.get("source_type", "memory"),
-            "responses":            [],
-            "narrative":            memory_hit["content"],
-            "synthesis_thinking":   "",
-            "synthesis_duration_ms": 0,
-            "synthesis_tokens_in":  0,
-            "synthesis_tokens_out": 0,
-            "fetch_job_id":         "",
-            "fetch_sources_count":  0,
-            "fetch_context_preview": "",
-            # Memory metadata
-            "from_memory":          True,
-            "memory_id":            memory_hit["id"],
-            "memory_similarity":    memory_hit["similarity"],
-            "memory_hit_count":     memory_hit["hit_count"],
-            "memory_created_at":    memory_hit["created_at"],
-            "intent":               intent,
-        }
-
-    # ── Step 3: Direct path (single model, no quorum) ─────────────────────────
-    if not needs_quorum:
-        log.info("Direct path for %r (intent=%s)", req.question[:60], intent)
-        job_id = str(uuid.uuid4())
-        async with httpx.AsyncClient() as client:
-            direct_result = await _chat(client, DIRECT_MODEL, req.question, timeout=180)
-
-        narrative = direct_result["content"]
-
-        # Persist a lightweight job record so history still works
-        with get_db() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO quorum_jobs (id, question, models, status) "
-                "VALUES (%s,%s,%s,'complete')",
-                (job_id, req.question, [DIRECT_MODEL]),
-            )
-            cur.execute(
-                """INSERT INTO quorum_responses
-                   (job_id, model, response, duration_ms, tokens_in, tokens_out)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
-                (job_id, DIRECT_MODEL, narrative,
-                 direct_result.get("duration_ms"),
-                 direct_result.get("tokens_in"),
-                 direct_result.get("tokens_out")),
-            )
-            cur.execute(
-                """INSERT INTO quorum_narratives
-                   (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                (job_id, DIRECT_MODEL, narrative, "",
-                 direct_result.get("duration_ms"),
-                 direct_result.get("tokens_in"),
-                 direct_result.get("tokens_out")),
-            )
-            conn.commit()
-            cur.close()
-
-        # Store in memory (direct facts have very long TTL)
-        await store_synthesis(
-            query=req.question,
-            content=narrative,
-            source_job_id=job_id,
-            source_type="direct",
-            intent=intent,
-            memory_ttl_days=memory_ttl_days,
-        )
-
-        return {
-            "job_id":               job_id,
-            "question":             req.question,
-            "models":               [DIRECT_MODEL],
-            "synthesis_model":      DIRECT_MODEL,
-            "responses":            [{"model": DIRECT_MODEL, "content": narrative,
-                                      **{k: direct_result.get(k) for k in
-                                         ("duration_ms", "tokens_in", "tokens_out")}}],
-            "narrative":            narrative,
-            "synthesis_thinking":   "",
-            "synthesis_duration_ms": direct_result.get("duration_ms"),
-            "synthesis_tokens_in":  direct_result.get("tokens_in"),
-            "synthesis_tokens_out": direct_result.get("tokens_out"),
-            "fetch_job_id":         "",
-            "fetch_sources_count":  0,
-            "fetch_context_preview": "",
-            "from_memory":          False,
-            "direct_path":          True,
-            "intent":               intent,
-        }
-
-    # ── Step 4: Full quorum path ───────────────────────────────────────────────
-    job_id = str(uuid.uuid4())
-
-    fetch_job_id        = ""
-    fetch_context       = ""
-    fetch_sources_count = 0
-
-    if req.enable_fetch or auto_fetch:
-        fetch_job_id, fetch_context = await _fetch_context_for_question(
-            req.question, req.fetch_mode
-        )
-        if fetch_context:
-            fetch_sources_count = fetch_context.count("\n--- ")
-
-    used_synthesis_model = req.synthesis_model or SYNTHESIS_MODEL
-
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO quorum_jobs (id, question, models, status) VALUES (%s,%s,%s,'running')",
-            (job_id, req.question, models),
-        )
-        conn.commit()
-
-        result = await run_quorum(req.question, models, used_synthesis_model, fetch_context)
-
-        for r in result["responses"]:
-            cur.execute(
-                """INSERT INTO quorum_responses
-                   (job_id, model, response, duration_ms, tokens_in, tokens_out)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
-                (job_id, r["model"], r["content"],
-                 r.get("duration_ms"), r.get("tokens_in"), r.get("tokens_out")),
-            )
-        cur.execute(
-            """INSERT INTO quorum_narratives
-               (job_id, synthesis_model, narrative, thinking, duration_ms, tokens_in, tokens_out)
-               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-            (job_id, used_synthesis_model, result["narrative"],
-             result.get("synthesis_thinking", ""),
-             result.get("synthesis_duration_ms"),
-             result.get("synthesis_tokens_in"),
-             result.get("synthesis_tokens_out")),
-        )
-        cur.execute("UPDATE quorum_jobs SET status='complete' WHERE id=%s", (job_id,))
-        conn.commit()
-        cur.close()
-
-    # Store synthesis in memory (news TTL=1d, reference TTL=30d, etc.)
-    if memory_ttl_days > 0 and result.get("narrative"):
-        await store_synthesis(
-            query=req.question,
-            content=result["narrative"],
-            source_job_id=job_id,
-            source_type="synthesis",
-            intent=intent,
-            memory_ttl_days=memory_ttl_days,
-        )
-
-    return {
-        "job_id":                  job_id,
-        "question":                req.question,
-        "models":                  models,
-        "synthesis_model":         used_synthesis_model,
-        "responses":               result["responses"],
-        "narrative":               result["narrative"],
-        "synthesis_thinking":      result.get("synthesis_thinking", ""),
-        "synthesis_duration_ms":   result.get("synthesis_duration_ms"),
-        "synthesis_tokens_in":     result.get("synthesis_tokens_in"),
-        "synthesis_tokens_out":    result.get("synthesis_tokens_out"),
-        "fetch_job_id":            fetch_job_id,
-        "fetch_sources_count":     fetch_sources_count,
-        "fetch_context_preview":   fetch_context[:500] if fetch_context else "",
-        "from_memory":             False,
-        "direct_path":             False,
-        "intent":                  intent,
-    }
-
-
-@app.get("/quorum/{job_id}")
-def get_quorum(job_id: str):
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT question, models, status, created_at FROM quorum_jobs WHERE id=%s", (job_id,)
-        )
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Job not found")
-        question, models, status, created_at = row
-
-        cur.execute(
-            """SELECT model, response, duration_ms, tokens_in, tokens_out, responded_at
-               FROM quorum_responses WHERE job_id=%s ORDER BY responded_at""",
-            (job_id,),
-        )
-        responses = [
-            {"model": r[0], "content": r[1], "duration_ms": r[2],
-             "tokens_in": r[3], "tokens_out": r[4], "at": str(r[5])}
-            for r in cur.fetchall()
-        ]
-
-        cur.execute(
-            """SELECT narrative, thinking, synthesis_model, duration_ms,
-                      tokens_in, tokens_out, created_at
-               FROM quorum_narratives WHERE job_id=%s""",
-            (job_id,),
-        )
-        nar = cur.fetchone()
-        cur.close()
-
-    return {
-        "job_id":                job_id,
-        "question":              question,
-        "models":                models,
-        "status":                status,
-        "created_at":            str(created_at),
-        "responses":             responses,
-        "narrative":             nar[0] if nar else None,
-        "synthesis_thinking":    nar[1] if nar else "",
-        "synthesis_model":       nar[2] if nar else None,
-        "synthesis_duration_ms": nar[3] if nar else None,
-        "synthesis_tokens_in":   nar[4] if nar else None,
-        "synthesis_tokens_out":  nar[5] if nar else None,
-    }
+    

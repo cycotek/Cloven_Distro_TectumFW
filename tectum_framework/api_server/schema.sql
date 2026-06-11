@@ -101,3 +101,36 @@ CREATE INDEX IF NOT EXISTS tectum_memory_embedding_idx
 -- Quick lookup by intent + recency (used for TTL filtering)
 CREATE INDEX IF NOT EXISTS tectum_memory_intent_created_idx
     ON tectum_memory (intent, created_at DESC);
+
+-- ── SIEM intake (UniFi webhook receiver) ──────────────────────────────────────
+--
+-- Stores raw UniFi IPS/firewall/threat events received via POST /siem.
+-- HIGH/CRITICAL events may trigger a quorum analysis job (quorum_job_id FK).
+-- raw_payload preserves the full webhook body for forensics.
+
+CREATE TABLE IF NOT EXISTS siem_events (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    received_at     TIMESTAMPTZ DEFAULT NOW(),
+    event_type      VARCHAR(100),                  -- UniFi key e.g. EVT_IPS_IpsAlert
+    subsystem       VARCHAR(50),                   -- ids|firewall|threat|network|etc
+    severity        VARCHAR(20) DEFAULT 'info',    -- critical|high|medium|low|info
+    src_ip          INET,
+    dst_ip          INET,
+    src_port        INTEGER,
+    dst_port        INTEGER,
+    proto           VARCHAR(10),
+    msg             TEXT,
+    site_id         VARCHAR(100),
+    raw_payload     JSONB NOT NULL,
+    processed       BOOLEAN DEFAULT FALSE,
+    quorum_job_id   UUID REFERENCES quorum_jobs(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS siem_events_received_at_idx
+    ON siem_events (received_at DESC);
+
+CREATE INDEX IF NOT EXISTS siem_events_severity_idx
+    ON siem_events (severity, received_at DESC);
+
+CREATE INDEX IF NOT EXISTS siem_events_src_ip_idx
+    ON siem_events (src_ip);
