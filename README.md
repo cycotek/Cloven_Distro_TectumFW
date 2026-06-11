@@ -53,11 +53,21 @@ User Query
 Store to tectum_memory → serve future queries instantly
 ```
 
-**Services:**
-- `cloven_tectum_api` — FastAPI, 3-tier router, memory layer
+**Services (bundled stack):**
+- `cloven_tectum_api` — FastAPI, 3-tier router, memory layer, SIEM intake
 - `cloven_tectum_fetcher` — Query optimizer + web crawler + context assembler
 - `cloven_tectum_db` — PostgreSQL 17 + pgvector
 - `cloven_ollama` — Ollama with full NVIDIA GPU passthrough
+
+**Standalone/NAS stack** (Synology DS2418+, `docker-compose.synology.yml`):
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `cloven_tectum_api` | 8800 | API + SIEM intake |
+| `cloven_tectum_fetcher` | 8801 | Web fetcher |
+| `cloven_tectum_mcp` | 8802 | MCP gateway (`/mcp`) |
+| `cloven_tectum_db` | 55432 | PostgreSQL + pgvector |
+| SIEM poller | — | systemd service on ai server (192.168.1.232) |
 
 ---
 
@@ -287,6 +297,11 @@ SYNTHESIS_MODEL=command-r:35b
 | `GET` | `/quorum/history` | Recent jobs |
 | `GET` | `/quorum/{id}` | Job status + responses + narrative |
 | `GET` | `/memory/search?q=&threshold=` | Debug: search semantic memory |
+| `POST` | `/siem` | Ingest a network security event |
+| `GET` | `/siem/events` | List stored SIEM events (`?limit=N`) |
+| `GET` | `/siem/stats` | Event counts by severity, last hour, high/crit 24h |
+
+Interactive docs at `/docs` (Swagger UI).
 
 ---
 

@@ -129,6 +129,10 @@ curl http://localhost:8000/quorum/history?limit=20
 curl "http://localhost:8000/memory/search?q=speed+of+light&threshold=0.8"
 
 # Delete a memory entry
+# ⚠️  NOTE: This endpoint does NOT exist in main.py (Task #12 — not yet implemented).
+# Workaround: delete directly in the DB:
+#   docker exec -it cloven_tectum_db psql -U $DATABASE_USER -d $DATABASE_NAME
+#   DELETE FROM tectum_memory WHERE question ILIKE '%your question%';
 curl -X DELETE http://localhost:8000/memory/{memory_id}
 ```
 
@@ -228,6 +232,97 @@ gh api user/packages/container/tectum-api/versions --jq '.[].metadata.container.
 - **Pulling on the NAS**: packages are public → anonymous `docker pull` works. If
   on a feature branch, set `IMAGE_TAG=<branch>` in the NAS `.env`; once on `main`,
   the default `${IMAGE_TAG:-latest}` just works.
+
+## SIEM Operations
+
+### Architecture
+
+```
+UniFi MCP (localhost:8100 on ai server)
+    ↓  systemd poller — polls every 30s, forwards new events
+TectumFW API (192.168.1.173:8800) → siem_events table (PostgreSQL + pgvector)
+```
+
+The poller runs as a `systemd --user` service on the **ai server (192.168.1.232)**,
+not on Syn1. Reason: Syn1 → ai server port 8100 times out due to wireless client
+isolation. The poller uses `localhost` for the MCP, avoiding the asymmetry.
+
+### SIEM endpoints
+
+```bash
+# Ingest an event
+curl -X POST http://192.168.1.173:8800/siem \
+  -H "Content-Type: application/json" \
+  -d '{"event_type":"firewall","subsystem":"lan","severity":"warning","src_ip":"10.0.0.5","msg":"blocked"}'
+
+# List recent events
+curl "http://192.168.1.173:8800/siem/events?limit=20"
+
+# Stats
+curl http://192.168.1.173:8800/siem/stats
+# → {"by_severity":{"info":N,"warning":N},"events_last_hour":N,"high_critical_24h":N}
+```
+
+### Poller service (ai server)
+
+```bash
+# Status / logs / control
+systemctl --user status siem-poller
+journalctl --user -u siem-poller -n 50
+systemctl --user restart siem-poller
+
+# Config
+cat ~/siem-poller/.env
+# UNIFI_MCP_URL=http://localhost:8100
+# UNIFI_MCP_KEY=<key>
+# TECTUM_SIEM_URL=http://192.168.1.173:8800/siem
+# POLL_INTERVAL=30
+```
+
+Silent when 0 new events (by design). Logs appear only when forwarding events.
+Linger is enabled — survives logouts and reboots.
+
+### siem_events table schema
+
+```sql
+id           UUID PRIMARY KEY DEFAULT gen_random_uuid()
+event_type   TEXT NOT NULL
+subsystem    TEXT
+severity     TEXT DEFAULT 'info'
+src_ip       INET
+dst_ip       INET
+src_port     INTEGER
+dst_port     INTEGER
+proto        TEXT
+msg          TEXT
+site_id      TEXT
+raw_payload  JSONB
+processed    BOOLEAN DEFAULT FALSE
+received_at  TIMESTAMPTZ DEFAULT NOW()
+quorum_job_id UUID REFERENCES quorum_jobs(id)
+```
+
+Indexes: `received_at DESC`, `(severity, received_at DESC)`, `src_ip`.
+
+### Synology Docker quirks (documented — bit us once)
+
+`sudo docker` fails on Synology DSM: the `sudo` secure PATH doesn't include
+ContainerManager's binary location. **Workaround**: use DSM Task Scheduler
+(Control Panel → Task Scheduler → Create → Scheduled Task → User-defined script,
+Owner: root) and locate docker dynamically:
+
+```bash
+#!/bin/bash
+DOCKER=$(find /var/packages/ContainerManager/target/usr/bin /usr/local/bin \
+  -name docker -type f 2>/dev/null | head -1)
+cd /volume1/docker/tectum
+$DOCKER pull ghcr.io/cycotek/tectum-api:latest
+$DOCKER compose -f docker-compose.synology.yml up -d cloven_tectum_api
+```
+
+**Delete the task after it runs** — scheduled tasks run at midnight by default.
+
+---
 
 ## Docs philosophy — where help lives
 

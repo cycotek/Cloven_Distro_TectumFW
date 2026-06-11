@@ -36,13 +36,32 @@ is the differentiator; most local-LLM setups have none of it.
   Two commits so far (standalone flavor; Synology/GHCR + self-init schema).
 - **Live on Syn1 (DS2418+)** at `/volume1/docker/tectum` via
   `docker-compose.synology.yml`, attached to Ollama on `192.168.1.232`.
+  Ports: API 8800 · Fetcher 8801 · MCP 8802 · DB 55432.
   MCP endpoint: `http://192.168.1.173:8802/mcp`.
 - [ ] **Split into its own repo `TectumFW-Standalone`** once the branch settles
   (the bundled `Cloven_Distro_TectumFW` stays as the GPU all-in-one demo).
-- [ ] **GHCR auto-publish** lands via `.github/workflows/publish-images.yml` on
-  push. Decide package visibility (public to pull on the NAS without auth, or
-  `docker login` on the NAS). Then the NAS can `docker compose pull` to update.
+- [x] **GHCR auto-publish** — `.github/workflows/publish-images.yml` builds and
+  pushes `ghcr.io/cycotek/tectum-{api,fetcher,mcp,siem-poller}` on push to
+  `main`. Packages are **public** — anonymous `docker pull` works on the NAS.
+  `sudo docker` fails on Synology (PATH issue); use DSM Task Scheduler as root
+  with a `find`-based docker binary path. See HANDBOOK.md → Synology quirks.
 - [x] Refresh the GitHub repo **description** (was outdated).
+
+## SIEM Intake — completed 2026-06-11
+
+- [x] **`POST /siem`** endpoint on `cloven_tectum_api` — accepts normalized network
+  events, stores to `siem_events` table (UUID PK, event_type, subsystem, severity,
+  src_ip/dst_ip INET, raw_payload JSONB, received_at).
+- [x] **`GET /siem/events`** — paginated event list.
+- [x] **`GET /siem/stats`** — by_severity counts, events_last_hour, high_critical_24h.
+- [x] **SIEM poller** — stdlib-only Python script running as a `systemd --user`
+  service on the ai server (192.168.1.232). Polls UniFi MCP at `localhost:8100`
+  every 30s, forwards new events to `http://192.168.1.173:8800/siem`. Tracks
+  state in `/tmp/siem_poller_state.json`. Linger-enabled for reboot persistence.
+- [x] **Network asymmetry documented**: Syn1 → ai server times out (wireless client
+  isolation); poller runs on ai server and uses localhost for the MCP.
+- [x] **IPS false positive resolved**: 192.168.1.232 → GitHub (140.82.114.4) was
+  generating CyberSecure alerts. IPS exception added.
 
 ## GUI
 
